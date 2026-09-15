@@ -22,6 +22,18 @@ The important boundary is simple: **the user chooses repository directories on t
 
 NPC State and SillyTavern-specific host tooling is intentionally not part of the generic core. It can be added later as an optional adapter rather than making every user inherit project-specific machinery.
 
+## Download
+
+The recommended beginner install is the packaged GitHub release:
+
+- [Download Windows Coding Agent v0.1.0 (ZIP)](https://github.com/kohz87/windows_coding_chatgpt/releases/download/v0.1.0/Windows-Coding-Agent-v0.1.0.zip)
+- [SHA-256 checksum](https://github.com/kohz87/windows_coding_chatgpt/releases/download/v0.1.0/Windows-Coding-Agent-v0.1.0.zip.sha256)
+- [All releases](https://github.com/kohz87/windows_coding_chatgpt/releases)
+
+Extract the ZIP, open the `Windows-Coding-Agent-v0.1.0` folder, and double-click `Setup.cmd`.
+
+Release ZIPs contain the runtime source, documentation, Windows launchers, configuration example, dependency lockfile, license, and a `VERSION.txt` identifying the packaged version and commit. Development-only CI and test files are not included.
+
 ## Requirements
 
 Required:
@@ -42,7 +54,7 @@ Windows Coding Agent does **not** store GitHub tokens in its repository registry
 
 ## Quick start
 
-Clone or download this repository, then double-click:
+Download the packaged release above or clone this repository, then double-click:
 
 ```text
 Setup.cmd
@@ -170,9 +182,10 @@ Publication is disabled unless the user enabled it locally for that repository.
 npm install
 npm test
 npm run validate
+npm run package
 ```
 
-CI runs the same test and validation commands on `windows-latest`.
+CI runs the test and validation commands on `windows-latest`. `npm run package` creates the same versioned ZIP and SHA-256 checksum used by the GitHub release workflow.
 
 ## Documentation
 
