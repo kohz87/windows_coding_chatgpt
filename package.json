@@ -1,6 +1,6 @@
 {
   "name": "windows-coding-agent",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Security-bounded Windows MCP coding controller for explicitly authorized Git repositories.",
   "type": "module",
   "private": true,
