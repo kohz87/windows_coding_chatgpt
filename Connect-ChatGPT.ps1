@@ -356,13 +356,30 @@ function Invoke-TunnelDoctor {
   return $true
 }
 
+function Get-McpCommand {
+  param([string]$ServerPath)
+
+  if ([string]::IsNullOrWhiteSpace($ServerPath)) {
+    throw 'MCP server path cannot be empty.'
+  }
+
+  $fullPath = [System.IO.Path]::GetFullPath($ServerPath)
+  $serverUri = ([System.Uri]::new($fullPath)).AbsoluteUri
+
+  # Keep the stored command quote-free. Windows PowerShell 5.1 can
+  # strip embedded quotes while forwarding native arguments, turning
+  # C:\Program Files\... into a bogus C:\Program executable token.
+  # A file URI percent-encodes spaces and remains one safe argument.
+  return "node --import=$serverUri -e 0"
+}
+
 function Configure-TunnelProfile {
   param($State, [string]$ClientPath, [string]$NodePath)
 
   if (-not (Test-ProfileName $State.profileName)) {
     throw 'Invalid tunnel profile name.'
   }
-  $mcpCommand = "`"$NodePath`" `"$script:ServerPath`""
+  $mcpCommand = Get-McpCommand -ServerPath $script:ServerPath
 
   Show-Header -RightText 'Setup  5 / 6'
   Write-Host '  [>>] CONFIGURE LOCAL BRIDGE'
@@ -377,6 +394,8 @@ function Configure-TunnelProfile {
   & $ClientPath init --force --sample sample_mcp_stdio_local --profile $State.profileName --tunnel-id $State.tunnelId --mcp-command $mcpCommand
   if ($LASTEXITCODE -ne 0) {
     Write-Host "  [X] tunnel-client init failed with exit code $LASTEXITCODE." -ForegroundColor Red
+    Write-Host '  [!] This failed while building the local MCP profile.' -ForegroundColor Yellow
+    Write-Host '      Re-entering the API key will not fix an MCP command preflight error.'
     return $false
   }
 
@@ -498,18 +517,29 @@ function Invoke-GuidedSetup {
 
   if (-not (Read-RuntimeApiKey)) { return }
 
-  if (-not (Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath)) {
+  $bridgeReady = Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath
+  while (-not $bridgeReady) {
     Write-Host ''
-    Write-Host '     [1] Re-enter runtime API key'
-    Write-Host '     [2] Open API Keys page'
+    Write-Host '  The local bridge is not configured yet.'
+    Write-Host ''
+    Write-Host '     [1] Retry local bridge configuration'
+    Write-Host '     [2] Re-enter runtime API key, then retry'
+    Write-Host '     [3] Open API Keys page'
     Write-Host '     [B] Return to menu'
-    $choice = Read-Choice '  Select' @('1','2','B')
+    $choice = Read-Choice '  Select' @('1','2','3','B')
     if ($choice -eq '1') {
+      $bridgeReady = Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath
+      continue
+    }
+    if ($choice -eq '2') {
       if (Read-RuntimeApiKey -ForcePrompt) {
-        Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath | Out-Null
+        $bridgeReady = Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath
       }
-    } elseif ($choice -eq '2') {
+      continue
+    }
+    if ($choice -eq '3') {
       Open-SetupPage $script:ApiKeysUrl | Out-Null
+      continue
     }
     return
   }
@@ -834,7 +864,13 @@ if ($SelfTest) {
   if (-not (Test-TunnelId 'tunnel_abc123')) { throw 'Tunnel ID validation rejected a valid ID.' }
   if (Test-TunnelId 'not-a-tunnel') { throw 'Tunnel ID validation accepted an invalid ID.' }
   if (-not (Test-ProfileName 'windows-coding-agent')) { throw 'Profile validation rejected the default profile.' }
-  Write-Host 'SELFTEST OK - wizard state contains no secret fields and validators passed.'
+  $spacePath = Join-Path ([System.IO.Path]::GetTempPath()) 'Windows Coding Agent Path With Spaces\src\index.js'
+  $mcpCommand = Get-McpCommand -ServerPath $spacePath
+  if ($mcpCommand.Contains('"') -or $mcpCommand.Contains("'")) { throw 'MCP command must remain quote-free for Windows PowerShell 5.1.' }
+  if (-not $mcpCommand.StartsWith('node --import=file:///')) { throw "Unexpected MCP command prefix: $mcpCommand" }
+  if ($mcpCommand -notmatch '%20') { throw "MCP command did not URI-encode spaces: $mcpCommand" }
+  if (-not $mcpCommand.EndsWith(' -e 0')) { throw "Unexpected MCP command suffix: $mcpCommand" }
+  Write-Host 'SELFTEST OK - wizard state is secret-free; validators and quote-safe MCP command passed.'
   exit 0
 }
 
