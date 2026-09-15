@@ -17,6 +17,13 @@ jobs:
       - run: npm run validate
       - name: MCP SDK smoke check
         run: node --input-type=module -e "import { McpServer } from '@modelcontextprotocol/server'; import { serveStdio } from '@modelcontextprotocol/server/stdio'; if (!McpServer || !serveStdio) process.exit(1)"
+      - name: ChatGPT tunnel launcher smoke check
+        shell: powershell
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path '.\Connect-ChatGPT.ps1'), [ref]$null, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          .\Connect-ChatGPT.ps1 -ShowInstructions
       - name: Build release ZIP
         run: npm run package
       - name: Inspect release ZIP
@@ -29,6 +36,6 @@ jobs:
           $extract = Join-Path $env:RUNNER_TEMP 'wca-package-smoke'
           Expand-Archive -Path $zip.FullName -DestinationPath $extract -Force
           $bundle = Get-ChildItem $extract -Directory | Select-Object -First 1
-          foreach ($required in @('Setup.cmd', 'Start-Agent.cmd', 'package.json', 'package-lock.json', 'README.md', 'LICENSE', 'VERSION.txt', 'src', 'docs')) {
+          foreach ($required in @('Setup.cmd', 'Start-Agent.cmd', 'Connect-ChatGPT.cmd', 'Connect-ChatGPT.ps1', 'package.json', 'package-lock.json', 'README.md', 'LICENSE', 'VERSION.txt', 'src', 'docs')) {
             if (-not (Test-Path (Join-Path $bundle.FullName $required))) { throw "Package is missing $required." }
           }
