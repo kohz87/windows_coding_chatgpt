@@ -11,7 +11,11 @@ const rl = createPrompt();
 try {
   const config = await loadConfig();
   await interactiveAddRepository(rl, config);
-  console.log('Setup complete. Run Start-Agent.cmd to manage repositories, or configure an MCP client to run `npm run server`.');
+  console.log('\nSetup complete.');
+  console.log('Local management: run Start-Agent.cmd.');
+  console.log('Local MCP clients: configure them to run `npm run server`.');
+  console.log('ChatGPT: run Connect-ChatGPT.cmd to configure OpenAI Secure MCP Tunnel and follow the custom app steps.');
+  console.log('Full ChatGPT guide: docs\\CHATGPT.md');
 } catch (error) {
   console.error(`Setup failed: ${error.message}`);
   process.exitCode = 1;
