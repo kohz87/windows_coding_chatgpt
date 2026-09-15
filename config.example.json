@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "repositories": {
+    "example-project": {
+      "name": "Example Project",
+      "path": "C:\\Users\\Alice\\Projects\\example-project",
+      "github": "alice/example-project",
+      "defaultBranch": "main",
+      "permissions": {
+        "worktrees": true,
+        "runScripts": true,
+        "commit": true,
+        "publish": false
+      },
+      "allowedNpmScripts": ["test", "validate", "build"]
+    }
+  }
+}
