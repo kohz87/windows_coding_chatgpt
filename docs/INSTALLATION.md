@@ -32,72 +32,61 @@ git clone https://github.com/kohz87/windows_coding_chatgpt.git
 cd windows_coding_chatgpt
 ```
 
-## 3. Run local setup
+## 3. Authorize a local repository
 
-Double-click `Setup.cmd` or run:
+Double-click:
+
+```text
+Setup.cmd
+```
+
+or run:
 
 ```text
 npm install
 npm run setup
 ```
 
-The wizard asks you to type or paste the local directory of a Git repository.
-
-Example:
+The ASCII setup screen asks you to type or paste a local Git repository directory, for example:
 
 ```text
 C:\Users\Alice\Projects\my-project
 ```
 
-The controller verifies the selected directory rather than trusting the text blindly. It detects the Git root, `origin`, GitHub owner/repository when applicable, default branch, and common npm scripts.
+The controller verifies the selected directory, detects the Git root, `origin`, GitHub owner/repository when applicable, default branch, and common npm scripts.
 
-The human-selected path becomes an authorized repository ID. Remote MCP clients cannot register arbitrary Windows directories for themselves.
+Only paths explicitly authorized by the human operator become available to MCP clients. ChatGPT cannot remotely add arbitrary Windows directories.
 
-## 4. Choose publication permission
+Setup also asks whether guarded GitHub publication should be enabled. The recommended first-run answer is `No`. Publication can later be toggled from `Start-Agent.cmd`.
 
-Setup asks whether guarded GitHub publication should be enabled.
+## 4. Connect ChatGPT (optional)
 
-The recommended first-run answer is `No`.
-
-When disabled, AI clients may still inspect, create worktrees, edit worktree files, run allowlisted checks, and create local commits, but they cannot push through the controller.
-
-Publication can later be toggled from `Start-Agent.cmd`.
-
-## 5. Connect ChatGPT (optional)
-
-If you want ChatGPT itself to call the local MCP and work on the authorized local Git repository, install OpenAI Secure MCP Tunnel client from:
-
-```text
-https://github.com/openai/tunnel-client/releases/latest
-```
-
-Then create:
-
-1. a Platform tunnel scoped to the ChatGPT workspace:
-
-   ```text
-   https://platform.openai.com/settings/organization/tunnels
-   ```
-
-2. a restricted Runtime API key with **Tunnels Read + Use**:
-
-   ```text
-   https://platform.openai.com/settings/organization/api-keys
-   ```
-
-Then run:
+If you want ChatGPT itself to call the local MCP, double-click:
 
 ```text
 Connect-ChatGPT.cmd
 ```
 
-The launcher links the Secure MCP Tunnel directly to the local stdio command for `src/index.js`, runs the tunnel diagnostic, and prints the ChatGPT custom MCP app/plugin setup steps.
+You do **not** need to pre-open all the OpenAI setup pages manually. The guided wizard walks through them in order and opens the official pages when requested.
 
-Keep the tunnel window running while ChatGPT needs access.
+The wizard handles:
 
-The full end-to-end guide, including ChatGPT Developer mode, Connection: Tunnel, action permissions, test prompts, and troubleshooting, is in `docs/CHATGPT.md`.
+1. local Node/Git/repository readiness
+2. locating or downloading OpenAI `tunnel-client`
+3. opening Platform Tunnels and collecting the `tunnel_...` ID
+4. opening Runtime API Keys and collecting a restricted **Tunnels Read + Use** key with a hidden prompt
+5. creating the local stdio tunnel profile and running `tunnel-client doctor --explain`
+6. opening ChatGPT connection settings and showing the exact custom MCP app values
 
-## 6. Manage authorized repositories
+The runtime API key is kept only in process memory and is never persisted by Windows Coding Agent.
+
+After first-time setup, the same launcher becomes the day-to-day control panel. Choose `[1] Start ChatGPT bridge`, keep the terminal open, and stop it with `Ctrl+C` when finished.
+
+The launcher also supports resume, diagnostics, reconfiguration, and two fresh-setup modes. The normal ChatGPT-only reset keeps repository authorization and worktrees intact.
+
+See `docs/CHATGPT.md` for the full walkthrough.
+
+## 5. Manage authorized repositories
 
 Run:
 
@@ -105,15 +94,17 @@ Run:
 Start-Agent.cmd
 ```
 
-Available actions:
+The ASCII repository manager can:
 
-- Add repository
-- Remove repository authorization
-- Toggle publication permission
+- add a repository
+- remove repository authorization
+- toggle fast-forward-only GitHub publication
 
 Removing authorization does not delete the repository from disk.
 
-## 7. Run diagnostics
+## 6. Run diagnostics
+
+Standalone local diagnostics:
 
 ```text
 Doctor.cmd
@@ -125,15 +116,9 @@ or:
 npm run doctor
 ```
 
-Doctor checks Node.js, Git, configuration validity, registered repository roots, and configured GitHub origins.
+For combined local + tunnel diagnostics, use the `[3] Diagnostics` option inside `Connect-ChatGPT.cmd`.
 
-For tunnel-specific diagnostics, use:
-
-```text
-tunnel-client doctor --profile windows-coding-agent --explain
-```
-
-## 8. Connect other MCP clients
+## 7. Connect other MCP clients
 
 The local MCP server entrypoint is:
 
@@ -158,4 +143,4 @@ npm run validate
 
 It deliberately refuses non-fast-forward Git updates.
 
-For a packaged ZIP install, download a newer release into a new directory. The user-level repository registry lives outside the extracted package under `%USERPROFILE%\.windows-coding-agent` by default, so replacing the program directory does not itself authorize new repositories.
+For a packaged ZIP install, download a newer release into a new directory. The user-level repository registry and ChatGPT wizard state live outside the extracted package under `%USERPROFILE%\.windows-coding-agent` by default, so replacing the program directory does not itself authorize new repositories or copy secrets into the package.
