@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
 import { validateRelativePath } from '../src/security.js';
 import { parseGitHubRemote, runGit } from '../src/git.js';
 import { emptyConfig, loadConfig, saveConfig } from '../src/config.js';
@@ -56,17 +56,18 @@ test('configuration persists repository registry', async () => {
 
 test('authorized local-only repository can create isolated guarded worktree', async () => {
   const repoPath = await makeRepo();
+  const canonicalRepoPath = await realpath(repoPath);
   const home = await mkdtemp(path.join(os.tmpdir(), 'wca-home-'));
   const env = { ...process.env, WINDOWS_CODING_AGENT_HOME: home };
   const config = emptyConfig();
   const repo = await registerRepository(config, 'demo', repoPath, { permissions: { publish: false } });
   assert.equal(repo.defaultBranch, 'main');
   assert.deepEqual(repo.allowedNpmScripts.sort(), ['build', 'test']);
-  assert.equal((await resolveRepository(config, 'demo')).path, repoPath);
+  assert.equal((await resolveRepository(config, 'demo')).path, canonicalRepoPath);
   const workspace = await createWorktree(config, 'demo', 'edit', null, env);
   const ws = await resolveWorkspace(config, workspace.workspaceId, env);
   const before = await readWorkspaceFile(ws.path, 'hello.txt');
   await writeWorkspaceFile(ws.path, 'hello.txt', 'changed\n', { expectedSha256: before.sha256 });
   assert.equal(await readFile(path.join(ws.path, 'hello.txt'), 'utf8'), 'changed\n');
-  assert.equal(await readFile(path.join(repoPath, 'hello.txt'), 'utf8'), 'hello\n');
+  assert.equal(await readFile(path.join(canonicalRepoPath, 'hello.txt'), 'utf8'), 'hello\n');
 });
