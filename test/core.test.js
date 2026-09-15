@@ -54,7 +54,7 @@ test('configuration persists repository registry', async () => {
   assert.deepEqual(await loadConfig(env), config);
 });
 
-test('authorized repository can create isolated guarded worktree', async () => {
+test('authorized local-only repository can create isolated guarded worktree', async () => {
   const repoPath = await makeRepo();
   const home = await mkdtemp(path.join(os.tmpdir(), 'wca-home-'));
   const env = { ...process.env, WINDOWS_CODING_AGENT_HOME: home };
@@ -63,8 +63,7 @@ test('authorized repository can create isolated guarded worktree', async () => {
   assert.equal(repo.defaultBranch, 'main');
   assert.deepEqual(repo.allowedNpmScripts.sort(), ['build', 'test']);
   assert.equal((await resolveRepository(config, 'demo')).path, repoPath);
-  const head = await git(['rev-parse', 'HEAD'], repoPath);
-  const workspace = await createWorktree(config, 'demo', 'edit', head, env);
+  const workspace = await createWorktree(config, 'demo', 'edit', null, env);
   const ws = await resolveWorkspace(config, workspace.workspaceId, env);
   const before = await readWorkspaceFile(ws.path, 'hello.txt');
   await writeWorkspaceFile(ws.path, 'hello.txt', 'changed\n', { expectedSha256: before.sha256 });
