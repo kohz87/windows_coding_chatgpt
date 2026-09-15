@@ -13,6 +13,7 @@ on:
       - docs/**
       - scripts/package-release.ps1
       - '*.cmd'
+      - Connect-ChatGPT.ps1
       - config.example.json
       - .github/workflows/release-package.yml
   workflow_dispatch:
@@ -38,6 +39,14 @@ jobs:
 
       - name: Validate source
         run: npm run validate
+
+      - name: Validate ChatGPT tunnel launcher
+        shell: powershell
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path '.\Connect-ChatGPT.ps1'), [ref]$null, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          .\Connect-ChatGPT.ps1 -ShowInstructions
 
       - name: Resolve release version
         shell: pwsh
@@ -78,11 +87,13 @@ jobs:
           @"
           Windows Coding Agent v$env:VERSION
 
-          Download `Windows-Coding-Agent-v$env:VERSION.zip`, extract it, and run `Setup.cmd`.
+          Download `Windows-Coding-Agent-v$env:VERSION.zip`, extract it, and run `Setup.cmd` to authorize a local Git repository.
+
+          To use the repository from ChatGPT, run `Connect-ChatGPT.cmd`. It guides you through OpenAI Secure MCP Tunnel and the ChatGPT custom MCP app connection.
 
           The `.sha256` asset contains the SHA-256 checksum for verifying the ZIP.
 
-          This package was built from commit $env:GITHUB_SHA after `npm test` and `npm run validate` passed on the Windows runner.
+          This package was built from commit $env:GITHUB_SHA after tests, source validation, and the ChatGPT tunnel launcher smoke check passed on the Windows runner.
           "@ | Set-Content release-notes.md -Encoding utf8
 
           gh release create $env:TAG $env:ZIP $env:SHA `
