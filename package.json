@@ -1,0 +1,21 @@
+{
+  "name": "windows-coding-agent",
+  "version": "0.1.0",
+  "description": "Security-bounded Windows MCP coding controller for explicitly authorized Git repositories.",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/startup.js",
+    "server": "node src/index.js",
+    "setup": "node src/setup.js",
+    "doctor": "node src/doctor.js",
+    "test": "node --test",
+    "validate": "node src/validate.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.1.0"
+  },
+  "license": "GPL-3.0-only"
+}
