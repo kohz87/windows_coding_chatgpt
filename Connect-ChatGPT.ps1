@@ -23,9 +23,9 @@ function Get-AgentHome {
   if (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_CODING_AGENT_HOME)) {
     return [System.IO.Path]::GetFullPath($env:WINDOWS_CODING_AGENT_HOME)
   }
-  $home = [Environment]::GetFolderPath('UserProfile')
-  if ([string]::IsNullOrWhiteSpace($home)) { $home = $env:USERPROFILE }
-  return (Join-Path $home '.windows-coding-agent')
+  $userHome = [Environment]::GetFolderPath('UserProfile')
+  if ([string]::IsNullOrWhiteSpace($userHome)) { $userHome = $env:USERPROFILE }
+  return (Join-Path $userHome '.windows-coding-agent')
 }
 
 $script:AgentHome = Get-AgentHome
