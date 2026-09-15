@@ -13,7 +13,11 @@ if ([string]::IsNullOrWhiteSpace($version)) {
 }
 
 $bundleName = "Windows-Coding-Agent-v$version"
-$outputRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputDirectory))
+if ([System.IO.Path]::IsPathRooted($OutputDirectory)) {
+  $outputRoot = [System.IO.Path]::GetFullPath($OutputDirectory)
+} else {
+  $outputRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputDirectory))
+}
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 
 $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("windows-coding-agent-package-" + [guid]::NewGuid().ToString('N'))
