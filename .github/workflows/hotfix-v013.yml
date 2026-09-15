@@ -1,0 +1,212 @@
+name: Build v0.1.3 Windows quoting hotfix
+
+on:
+  push:
+    branches:
+      - work/fix-windows-mcp-command-v0.1.3
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/fix-windows-mcp-command-v0.1.3
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Apply focused hotfix
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Replace-ExactlyOnce {
+            param(
+              [string]$Text,
+              [string]$Search,
+              [string]$Replace,
+              [string]$Label
+            )
+            $searchLf = $Search.Replace("`r`n", "`n")
+            $replaceLf = $Replace.Replace("`r`n", "`n")
+            $count = ([regex]::Matches($Text, [regex]::Escape($searchLf))).Count
+            if ($count -ne 1) {
+              throw "$Label expected exactly one match, found $count."
+            }
+            return $Text.Replace($searchLf, $replaceLf)
+          }
+
+          $path = 'Connect-ChatGPT.ps1'
+          $text = [System.IO.File]::ReadAllText($path).Replace("`r`n", "`n")
+
+          $configureMarker = @'
+          function Configure-TunnelProfile {
+          '@
+          $helper = @'
+          function Get-McpCommand {
+            param([string]$ServerPath)
+
+            if ([string]::IsNullOrWhiteSpace($ServerPath)) {
+              throw 'MCP server path cannot be empty.'
+            }
+
+            $fullPath = [System.IO.Path]::GetFullPath($ServerPath)
+            $serverUri = ([System.Uri]::new($fullPath)).AbsoluteUri
+
+            # Keep the stored command quote-free. Windows PowerShell 5.1 can
+            # strip embedded quotes while forwarding native arguments, turning
+            # C:\Program Files\... into a bogus C:\Program executable token.
+            # A file URI percent-encodes spaces and remains one safe argument.
+            return "node --import=$serverUri -e 0"
+          }
+
+          function Configure-TunnelProfile {
+          '@
+          $text = Replace-ExactlyOnce $text $configureMarker $helper 'Get-McpCommand insertion'
+
+          $oldCommand = @'
+            $mcpCommand = "`"$NodePath`" `"$script:ServerPath`""
+          '@
+          $newCommand = @'
+            $mcpCommand = Get-McpCommand -ServerPath $script:ServerPath
+          '@
+          $text = Replace-ExactlyOnce $text $oldCommand $newCommand 'MCP command replacement'
+
+          $oldInitFailure = @'
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "  [X] tunnel-client init failed with exit code $LASTEXITCODE." -ForegroundColor Red
+              return $false
+            }
+          '@
+          $newInitFailure = @'
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "  [X] tunnel-client init failed with exit code $LASTEXITCODE." -ForegroundColor Red
+              Write-Host '  [!] This failed while building the local MCP profile.' -ForegroundColor Yellow
+              Write-Host '      Re-entering the API key will not fix an MCP command preflight error.'
+              return $false
+            }
+          '@
+          $text = Replace-ExactlyOnce $text $oldInitFailure $newInitFailure 'init failure guidance'
+
+          $oldRecovery = @'
+            if (-not (Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath)) {
+              Write-Host ''
+              Write-Host '     [1] Re-enter runtime API key'
+              Write-Host '     [2] Open API Keys page'
+              Write-Host '     [B] Return to menu'
+              $choice = Read-Choice '  Select' @('1','2','B')
+              if ($choice -eq '1') {
+                if (Read-RuntimeApiKey -ForcePrompt) {
+                  Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath | Out-Null
+                }
+              } elseif ($choice -eq '2') {
+                Open-SetupPage $script:ApiKeysUrl | Out-Null
+              }
+              return
+            }
+          '@
+          $newRecovery = @'
+            $bridgeReady = Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath
+            while (-not $bridgeReady) {
+              Write-Host ''
+              Write-Host '  The local bridge is not configured yet.'
+              Write-Host ''
+              Write-Host '     [1] Retry local bridge configuration'
+              Write-Host '     [2] Re-enter runtime API key, then retry'
+              Write-Host '     [3] Open API Keys page'
+              Write-Host '     [B] Return to menu'
+              $choice = Read-Choice '  Select' @('1','2','3','B')
+              if ($choice -eq '1') {
+                $bridgeReady = Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath
+                continue
+              }
+              if ($choice -eq '2') {
+                if (Read-RuntimeApiKey -ForcePrompt) {
+                  $bridgeReady = Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath
+                }
+                continue
+              }
+              if ($choice -eq '3') {
+                Open-SetupPage $script:ApiKeysUrl | Out-Null
+                continue
+              }
+              return
+            }
+          '@
+          $text = Replace-ExactlyOnce $text $oldRecovery $newRecovery 'bridge recovery flow'
+
+          $oldSelfTestTail = @'
+            if (-not (Test-ProfileName 'windows-coding-agent')) { throw 'Profile validation rejected the default profile.' }
+            Write-Host 'SELFTEST OK - wizard state contains no secret fields and validators passed.'
+          '@
+          $newSelfTestTail = @'
+            if (-not (Test-ProfileName 'windows-coding-agent')) { throw 'Profile validation rejected the default profile.' }
+            $spacePath = Join-Path ([System.IO.Path]::GetTempPath()) 'Windows Coding Agent Path With Spaces\src\index.js'
+            $mcpCommand = Get-McpCommand -ServerPath $spacePath
+            if ($mcpCommand.Contains('"') -or $mcpCommand.Contains("'")) { throw 'MCP command must remain quote-free for Windows PowerShell 5.1.' }
+            if (-not $mcpCommand.StartsWith('node --import=file:///')) { throw "Unexpected MCP command prefix: $mcpCommand" }
+            if ($mcpCommand -notmatch '%20') { throw "MCP command did not URI-encode spaces: $mcpCommand" }
+            if (-not $mcpCommand.EndsWith(' -e 0')) { throw "Unexpected MCP command suffix: $mcpCommand" }
+            Write-Host 'SELFTEST OK - wizard state is secret-free; validators and quote-safe MCP command passed.'
+          '@
+          $text = Replace-ExactlyOnce $text $oldSelfTestTail $newSelfTestTail 'self-test regression coverage'
+
+          [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
+
+          $packagePath = 'package.json'
+          $packageText = [System.IO.File]::ReadAllText($packagePath).Replace("`r`n", "`n")
+          $packageText = Replace-ExactlyOnce $packageText '"version": "0.1.2"' '"version": "0.1.3"' 'package version bump'
+          [System.IO.File]::WriteAllText($packagePath, $packageText, [System.Text.UTF8Encoding]::new($false))
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests and validation
+        shell: powershell
+        run: |
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run validate
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate Windows PowerShell and quote-safe MCP command
+        shell: powershell
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path '.\Connect-ChatGPT.ps1'), [ref]$null, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\Connect-ChatGPT.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $probeRoot = Join-Path $env:RUNNER_TEMP 'Windows Coding Agent Space Probe'
+          New-Item -ItemType Directory -Force -Path $probeRoot | Out-Null
+          $probeModule = Join-Path $probeRoot 'probe module.mjs'
+          "process.stdout.write('MCP_IMPORT_OK')" | Set-Content -LiteralPath $probeModule -Encoding ascii
+          $probeUri = ([System.Uri]::new((Resolve-Path -LiteralPath $probeModule).Path)).AbsoluteUri
+          $probeOutput = & node "--import=$probeUri" -e 0
+          if ($LASTEXITCODE -ne 0 -or ($probeOutput -join '') -ne 'MCP_IMPORT_OK') {
+            throw 'Node --import file-URI smoke test failed for a path containing spaces.'
+          }
+
+      - name: Build release package
+        run: npm run package
+
+      - name: Commit tested hotfix to branch
+        shell: powershell
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Connect-ChatGPT.ps1 package.json package-lock.json
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git commit -m "fix: make Windows MCP command quote-safe"
+          git push origin HEAD:work/fix-windows-mcp-command-v0.1.3
