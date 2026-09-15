@@ -11,7 +11,8 @@
     "setup": "node src/setup.js",
     "doctor": "node src/doctor.js",
     "test": "node --test",
-    "validate": "node src/validate.js"
+    "validate": "node src/validate.js",
+    "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
