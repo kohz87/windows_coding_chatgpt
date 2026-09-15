@@ -18,7 +18,7 @@ export async function createWorktree(config, repositoryId, label = 'task', base 
   await mkdir(root, { recursive: true });
   const target = path.join(root, id);
   assertPathInside(root, target);
-  const requestedBase = base || `origin/${repo.defaultBranch}`;
+  const requestedBase = base || (repo.github ? `origin/${repo.defaultBranch}` : repo.defaultBranch);
   if (requestedBase.startsWith('origin/')) {
     const fetch = await runGit(['fetch', 'origin', repo.defaultBranch], repo.path);
     if (!fetch.ok) throw new Error(`Could not fetch ${repo.defaultBranch}: ${fetch.stderr || fetch.error}`);
