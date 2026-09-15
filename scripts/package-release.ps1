@@ -30,6 +30,8 @@ try {
     'docs',
     'Setup.cmd',
     'Start-Agent.cmd',
+    'Connect-ChatGPT.cmd',
+    'Connect-ChatGPT.ps1',
     'Doctor.cmd',
     'Update.cmd',
     'config.example.json',
@@ -51,7 +53,8 @@ try {
     "Windows Coding Agent v$version",
     "Commit: $commitText",
     '',
-    'Unzip this directory and run Setup.cmd.'
+    'Unzip this directory and run Setup.cmd.',
+    'For ChatGPT access, complete Setup.cmd and then run Connect-ChatGPT.cmd.'
   ) | Set-Content -Path (Join-Path $bundleRoot 'VERSION.txt') -Encoding ascii
 
   $zipPath = Join-Path $outputRoot "$bundleName.zip"
