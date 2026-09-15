@@ -13,5 +13,12 @@ jobs:
         with:
           node-version: '22'
       - run: npm install
-      - run: npm test
+      - name: Test remote parser
+        run: node --test --test-name-pattern="GitHub remote parser" test/core.test.js
+      - name: Test path security
+        run: node --test --test-name-pattern="relative-path guard" test/core.test.js
+      - name: Test config persistence
+        run: node --test --test-name-pattern="configuration persists" test/core.test.js
+      - name: Test local-only worktree
+        run: node --test --test-name-pattern="authorized local-only" test/core.test.js
       - run: npm run validate
