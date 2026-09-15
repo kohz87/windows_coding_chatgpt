@@ -4,11 +4,12 @@ A security-bounded MCP coding controller for Windows that lets ChatGPT, Codex, a
 
 The important boundary is simple: **the human chooses repository directories locally. The AI cannot authorize new filesystem locations for itself.**
 
-## What v0.1 provides
+## What it provides
 
-- Local setup wizard for manually selecting Git repository directories
-- ChatGPT connection through OpenAI Secure MCP Tunnel
-- Guided `Connect-ChatGPT.cmd` setup for the tunnel/runtime key/custom MCP app flow
+- Friendly ASCII setup and repository-management screens
+- Guided `Connect-ChatGPT.cmd` wizard for ChatGPT + OpenAI Secure MCP Tunnel
+- Automatic opening of the official tunnel, API-key, tunnel-client, and ChatGPT setup pages when needed
+- Resume/reconfigure/fresh-setup flows without storing the runtime API key
 - Persistent repository registry under your Windows user profile
 - Read-only canonical repositories
 - Isolated writable `work/*` Git worktrees
@@ -18,8 +19,7 @@ The important boundary is simple: **the human chooses repository directories loc
 - Guarded local commits
 - Optional fast-forward-only publication to the configured GitHub repository
 - MCP stdio server for Codex and local MCP clients
-- Health/diagnostic command
-- Windows-first launchers and Windows GitHub Actions CI
+- Windows-first launchers, diagnostics, packaging, and GitHub Actions CI
 
 NPC State and SillyTavern-specific tooling is intentionally not part of the generic core.
 
@@ -45,15 +45,15 @@ For ChatGPT access:
 
 - OpenAI Secure MCP Tunnel client
 - an OpenAI Platform tunnel and restricted runtime key
-- a ChatGPT workspace/role that permits Developer mode/custom MCP apps and the required actions
+- a ChatGPT workspace/role that permits the custom MCP app/tunnel connection and required actions
 
 For GitHub publication, Git must already be authenticated for the repository by your normal Git credential setup.
 
-Windows Coding Agent does **not** store GitHub tokens or OpenAI runtime API keys in its repository registry.
+Windows Coding Agent does **not** store GitHub tokens or OpenAI runtime API keys in its repository registry or ChatGPT wizard state.
 
 ## Quick start: ChatGPT -> local Git
 
-### 1. Authorize the local repository
+### 1. Authorize a repository
 
 Double-click:
 
@@ -61,7 +61,7 @@ Double-click:
 Setup.cmd
 ```
 
-Enter/select a Git repository such as:
+Enter a Git repository such as:
 
 ```text
 C:\Users\Alice\Projects\my-app
@@ -69,27 +69,7 @@ C:\Users\Alice\Projects\my-app
 
 The setup verifies the Git root, detects the GitHub `origin` when present, detects common npm scripts, and asks whether guarded publication should be enabled.
 
-### 2. Create an OpenAI Secure MCP Tunnel
-
-Create a tunnel for the ChatGPT workspace that will use the controller:
-
-```text
-https://platform.openai.com/settings/organization/tunnels
-```
-
-Then create a restricted Runtime API key with **Tunnels Read + Use**:
-
-```text
-https://platform.openai.com/settings/organization/api-keys
-```
-
-Install the official OpenAI tunnel client from:
-
-```text
-https://github.com/openai/tunnel-client/releases/latest
-```
-
-### 3. Connect this PC
+### 2. Run the ChatGPT wizard
 
 Double-click:
 
@@ -97,35 +77,67 @@ Double-click:
 Connect-ChatGPT.cmd
 ```
 
-It asks for the tunnel ID and runtime API key, creates the OpenAI `sample_mcp_stdio_local` profile for Windows Coding Agent, runs `tunnel-client doctor`, shows the ChatGPT app steps, and then runs the tunnel.
-
-The runtime API key is entered with a hidden prompt and is kept in the current process environment rather than written to the Windows Coding Agent configuration.
-
-Keep that terminal open while ChatGPT is using the local MCP.
-
-### 4. Create the ChatGPT custom MCP app
-
-In ChatGPT Settings:
-
-1. Open **Plugins** or **Apps**, then **Advanced settings**.
-2. Enable **Developer mode** if your workspace permits it.
-3. Create a custom MCP app named `Windows Coding Agent`.
-4. Choose **Connection: Tunnel**.
-5. Select/paste the same `tunnel_...` ID used by `Connect-ChatGPT.cmd`.
-6. Use **Authentication: None** when that field is shown for the Secure MCP Tunnel connection.
-7. Let ChatGPT scan/import the MCP tools and save the app.
-8. In workspace app controls, enable the required Read and Write actions. The recommended default for writes is **Always ask**.
-
-A public Plugin Directory submission is **not required** for personal/internal use. The custom MCP app is the ChatGPT-to-tunnel binding.
-
-See [docs/CHATGPT.md](docs/CHATGPT.md) for the detailed walkthrough and troubleshooting.
-
-### 5. Test from ChatGPT
-
-Start with a read-only prompt:
+The launcher becomes the setup control panel:
 
 ```text
-Use Windows Coding Agent. List my authorized repositories and show their status. Do not modify anything.
++----------------------------------------------------------+
+|              WINDOWS CODING AGENT                      |
+|          ChatGPT <-> Local Git Bridge                  |
++----------------------------------------------------------+
+
+  Connection status
+
+  Local repositories                     [OK] 1 authorized
+  Tunnel client                           [--] not configured
+  OpenAI tunnel                           [--] not configured
+  ChatGPT app                             [--] not confirmed
+
+  --------------------------------------------------------
+
+     [1] Start guided setup
+     [2] Setup / resume / reconfigure
+     [3] Diagnostics
+     [4] Manage repositories
+     [5] Start fresh setup
+     [Q] Quit
+```
+
+For first-time setup, choose `[1]`.
+
+The six-step wizard:
+
+1. checks Node.js, Git, and local repository authorization
+2. finds `tunnel-client.exe` or opens the official download page
+3. opens the OpenAI Tunnels page and asks for the `tunnel_...` ID
+4. opens Runtime API Keys and asks for a restricted **Tunnels Read + Use** key using a hidden prompt
+5. creates the local stdio tunnel profile and runs `tunnel-client doctor --explain`
+6. opens ChatGPT connection settings and shows the exact custom MCP app values to select
+
+The authenticated browser pages remain explicit user actions. The script does not attempt to click through your OpenAI account or silently grant permissions.
+
+### 3. Start the bridge
+
+After setup, future launches become:
+
+```text
+Connect-ChatGPT.cmd
+   -> [1] Start ChatGPT bridge
+```
+
+The wizard asks for the runtime key again unless `CONTROL_PLANE_API_KEY` already exists, verifies the tunnel, optionally opens ChatGPT, and starts the foreground Secure MCP Tunnel.
+
+Keep the terminal open while ChatGPT is using the local MCP. Stop it with `Ctrl+C`.
+
+No inbound public port is required.
+
+### 4. Test from ChatGPT
+
+Start read-only:
+
+```text
+Use Windows Coding Agent.
+List my authorized repositories and show their current status.
+Do not modify anything.
 ```
 
 Then test a guarded edit:
@@ -151,7 +163,29 @@ ChatGPT
    -> optional guarded GitHub publication
 ```
 
-No inbound public port is required.
+See [docs/CHATGPT.md](docs/CHATGPT.md) for the detailed walkthrough, resume/reconfigure behavior, safe reset modes, and troubleshooting.
+
+## Resume, reconfigure, or start fresh
+
+`Connect-ChatGPT.cmd` remembers only non-secret setup state such as the tunnel ID, tunnel-client path, and completion markers.
+
+Default location:
+
+```text
+%USERPROFILE%\.windows-coding-agent\chatgpt-connection.json
+```
+
+The runtime API key is never written there.
+
+From the control panel you can:
+
+- resume the guided setup
+- change only the tunnel ID or tunnel-client path
+- validate a new runtime key
+- reopen the ChatGPT connection step
+- manage authorized repositories
+- reset only the ChatGPT connection while keeping repositories/worktrees
+- perform a full reset only after explicit `RESET` confirmation; the repository registry is backed up first
 
 ## Local repository management
 
@@ -161,9 +195,9 @@ Run:
 Start-Agent.cmd
 ```
 
-The startup manager lets you add/remove authorized repositories and toggle publication without hand-editing JSON.
+It provides an ASCII repository manager for adding/removing authorized repositories and toggling guarded publication without hand-editing JSON.
 
-Run diagnostics with:
+Run standalone diagnostics with:
 
 ```text
 Doctor.cmd
@@ -237,6 +271,18 @@ Canonical repository checkouts are treated as read-only by mutation tools. Sourc
 
 The MCP client cannot choose arbitrary Windows paths, arbitrary Git remotes, or force-push targets. ChatGPT workspace write permission does not override these local guards. Publication is tied to the locally authorized GitHub `origin` and uses a normal non-force push after exact HEAD and remote-head checks.
 
+The ChatGPT path adds another separation of duties:
+
+```text
+ChatGPT action permission
+        +
+restricted tunnel runtime credential
+        +
+human local repository authorization
+        +
+Windows Coding Agent worktree/git guards
+```
+
 See [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Common MCP workflow
@@ -261,7 +307,7 @@ npm run validate
 npm run package
 ```
 
-CI runs tests, validation, the MCP SDK smoke test, the ChatGPT launcher smoke test, and a release ZIP extraction/contents check on `windows-latest`.
+CI runs tests, validation, the MCP SDK smoke test, Windows PowerShell parser + wizard self-tests, and a release ZIP extraction/contents/self-test check on `windows-latest`.
 
 ## Documentation
 
