@@ -22,6 +22,22 @@ export async function repositoryStatus(repo) {
   };
 }
 
+export async function repositoryRemoteStatus(repo) {
+  if (!repo.github) throw new Error('This repository has no configured GitHub origin.');
+  const fetchUrl = await runGit(['remote', 'get-url', 'origin'], repo.path);
+  const pushUrl = await runGit(['remote', 'get-url', '--push', 'origin'], repo.path);
+  if (!fetchUrl.ok || !pushUrl.ok || !githubRemoteMatches(fetchUrl.stdout, repo.github) || !githubRemoteMatches(pushUrl.stdout, repo.github)) {
+    throw new Error('Configured origin does not match the locally authorized GitHub repository.');
+  }
+  const remote = await runGit(['ls-remote', 'origin', `refs/heads/${repo.defaultBranch}`], repo.path);
+  if (!remote.ok) throw new Error(`Could not inspect configured remote branch: ${remote.stderr || remote.error}`);
+  const line = remote.stdout.trim();
+  if (!line) throw new Error(`Configured remote branch '${repo.defaultBranch}' was not found.`);
+  const remoteHead = line.split(/\s+/)[0];
+  if (!/^[a-f0-9]{40}$/.test(remoteHead)) throw new Error('Configured remote returned an invalid commit SHA.');
+  return { repositoryId: repo.id, github: repo.github, branch: repo.defaultBranch, remoteHead };
+}
+
 export async function runAllowedNpmScript(config, workspaceId, script, env = process.env) {
   const ws = await resolveWorkspace(config, workspaceId, env);
   if (!ws.repository.permissions.runScripts) throw new Error('Script execution is disabled for this repository.');
