@@ -27,6 +27,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -NoProfile -ExecutionPolicy Bypass -File .\Connect-ChatGPT.ps1 -ShowInstructions -TunnelId tunnel_ci_test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: MCP file URI path-with-spaces smoke check
+        shell: powershell
+        run: |
+          $probeRoot = Join-Path $env:RUNNER_TEMP 'Windows Coding Agent Space Probe'
+          New-Item -ItemType Directory -Force -Path $probeRoot | Out-Null
+          $probeModule = Join-Path $probeRoot 'probe module.mjs'
+          "process.stdout.write('MCP_IMPORT_OK')" | Set-Content -LiteralPath $probeModule -Encoding ascii
+          $probeUri = ([System.Uri]::new((Resolve-Path -LiteralPath $probeModule).Path)).AbsoluteUri
+          if ($probeUri -notmatch '%20') { throw "Probe URI did not encode spaces: $probeUri" }
+          $probeOutput = & node "--import=$probeUri" -e 0
+          if ($LASTEXITCODE -ne 0 -or ($probeOutput -join '') -ne 'MCP_IMPORT_OK') {
+            throw 'Node --import file-URI smoke test failed for a path containing spaces.'
+          }
       - name: Build release ZIP
         run: npm run package
       - name: Inspect release ZIP
