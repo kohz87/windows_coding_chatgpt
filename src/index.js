@@ -8,7 +8,7 @@ import { createWorktree, resolveWorkspace } from './workspaces.js';
 import { readWorkspaceFile, writeWorkspaceFile, deleteWorkspaceFile } from './files.js';
 import { securePath } from './security.js';
 import { runGit } from './git.js';
-import { repositoryStatus, runAllowedNpmScript, commitWorkspace, publishWorkspace } from './operations.js';
+import { repositoryStatus, repositoryRemoteStatus, runAllowedNpmScript, commitWorkspace, publishWorkspace } from './operations.js';
 
 const VERSION = '0.1.0';
 const text = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value });
@@ -37,6 +37,14 @@ function createServer() {
   }, guarded(async ({ repositoryId }) => {
     const config = await loadConfig();
     return repositoryStatus(await resolveRepository(config, repositoryId));
+  }));
+
+  server.registerTool('repository_remote_status', {
+    description: 'Inspect the exact configured GitHub default-branch SHA without mutating the repository. Use the returned remoteHead as the expectedRemoteHead for guarded publication.',
+    inputSchema: z.object({ repositoryId: z.string() }),
+  }, guarded(async ({ repositoryId }) => {
+    const config = await loadConfig();
+    return repositoryRemoteStatus(await resolveRepository(config, repositoryId));
   }));
 
   server.registerTool('repository_file_read', {
@@ -125,7 +133,7 @@ function createServer() {
   }, guarded(async ({ workspaceId, expectedHead, message }) => commitWorkspace(await loadConfig(), workspaceId, expectedHead, message)));
 
   server.registerTool('repo_publish', {
-    description: 'Publish one accepted clean worktree HEAD to the locally configured GitHub default branch using a normal non-force fast-forward push. Publication must first be enabled locally.',
+    description: 'Publish one accepted clean worktree HEAD to the locally configured GitHub default branch using a normal non-force fast-forward push. Publication must first be enabled locally. Obtain expectedRemoteHead from repository_remote_status immediately before publication.',
     inputSchema: z.object({ workspaceId: z.string(), expectedHead: z.string().regex(/^[a-f0-9]{40}$/), expectedRemoteHead: z.string().regex(/^[a-f0-9]{40}$/), confirmation: z.literal('PUBLISH_CONFIGURED_REMOTE_FAST_FORWARD') }),
   }, guarded(async ({ workspaceId, expectedHead, expectedRemoteHead, confirmation }) => publishWorkspace(await loadConfig(), workspaceId, expectedHead, expectedRemoteHead, confirmation)));
 
