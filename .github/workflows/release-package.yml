@@ -40,13 +40,16 @@ jobs:
       - name: Validate source
         run: npm run validate
 
-      - name: Validate ChatGPT tunnel launcher
+      - name: Validate ChatGPT wizard
         shell: powershell
         run: |
           $errors = $null
           [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path '.\Connect-ChatGPT.ps1'), [ref]$null, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
-          .\Connect-ChatGPT.ps1 -ShowInstructions
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\Connect-ChatGPT.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\Connect-ChatGPT.ps1 -ShowInstructions -TunnelId tunnel_release_test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Resolve release version
         shell: pwsh
@@ -87,13 +90,13 @@ jobs:
           @"
           Windows Coding Agent v$env:VERSION
 
-          Download `Windows-Coding-Agent-v$env:VERSION.zip`, extract it, and run `Setup.cmd` to authorize a local Git repository.
+          Download Windows-Coding-Agent-v$env:VERSION.zip, extract it, and run Setup.cmd to authorize a local Git repository.
 
-          To use the repository from ChatGPT, run `Connect-ChatGPT.cmd`. It guides you through OpenAI Secure MCP Tunnel and the ChatGPT custom MCP app connection.
+          Then run Connect-ChatGPT.cmd. The guided ASCII wizard opens the OpenAI tunnel/API-key/ChatGPT setup pages, validates the local bridge, remembers only non-secret progress, and can resume or safely restart setup later.
 
-          The `.sha256` asset contains the SHA-256 checksum for verifying the ZIP.
+          The .sha256 asset contains the SHA-256 checksum for verifying the ZIP.
 
-          This package was built from commit $env:GITHUB_SHA after tests, source validation, and the ChatGPT tunnel launcher smoke check passed on the Windows runner.
+          This package was built from commit $env:GITHUB_SHA after tests, source validation, and the ChatGPT wizard smoke checks passed on the Windows runner.
           "@ | Set-Content release-notes.md -Encoding utf8
 
           gh release create $env:TAG $env:ZIP $env:SHA `
