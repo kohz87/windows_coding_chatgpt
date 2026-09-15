@@ -1,0 +1,92 @@
+name: Package Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+      - package-lock.json
+      - README.md
+      - LICENSE
+      - src/**
+      - docs/**
+      - scripts/package-release.ps1
+      - '*.cmd'
+      - config.example.json
+      - .github/workflows/release-package.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
+
+      - name: Validate source
+        run: npm run validate
+
+      - name: Resolve release version
+        shell: pwsh
+        run: |
+          $version = [string](Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ([string]::IsNullOrWhiteSpace($version)) { throw 'package.json version is empty.' }
+          "VERSION=$version" >> $env:GITHUB_ENV
+          "TAG=v$version" >> $env:GITHUB_ENV
+          "ZIP=dist/Windows-Coding-Agent-v$version.zip" >> $env:GITHUB_ENV
+          "SHA=dist/Windows-Coding-Agent-v$version.zip.sha256" >> $env:GITHUB_ENV
+
+      - name: Check for existing release
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            "exists=true" >> $env:GITHUB_OUTPUT
+            Write-Host "Release $env:TAG already exists; leaving it immutable."
+          } else {
+            "exists=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+      - name: Build ZIP package
+        if: steps.release.outputs.exists != 'true'
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1 -OutputDirectory dist -Commit $env:GITHUB_SHA
+
+      - name: Create GitHub release
+        if: steps.release.outputs.exists != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          @"
+          Windows Coding Agent v$env:VERSION
+
+          Download `Windows-Coding-Agent-v$env:VERSION.zip`, extract it, and run `Setup.cmd`.
+
+          The `.sha256` asset contains the SHA-256 checksum for verifying the ZIP.
+
+          This package was built from commit $env:GITHUB_SHA after `npm test` and `npm run validate` passed on the Windows runner.
+          "@ | Set-Content release-notes.md -Encoding utf8
+
+          gh release create $env:TAG $env:ZIP $env:SHA `
+            --repo $env:GITHUB_REPOSITORY `
+            --target $env:GITHUB_SHA `
+            --title "Windows Coding Agent v$env:VERSION" `
+            --notes-file release-notes.md
