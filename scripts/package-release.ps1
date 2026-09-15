@@ -59,7 +59,17 @@ try {
   Remove-Item $zipPath, $checksumPath -Force -ErrorAction SilentlyContinue
 
   Compress-Archive -Path $bundleRoot -DestinationPath $zipPath -CompressionLevel Optimal
-  $hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+
+  $stream = [System.IO.File]::OpenRead($zipPath)
+  $sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $hashBytes = $sha256.ComputeHash($stream)
+    $hash = -join ($hashBytes | ForEach-Object { $_.ToString('x2') })
+  } finally {
+    $stream.Dispose()
+    $sha256.Dispose()
+  }
+
   "$hash  $bundleName.zip" | Set-Content -Path $checksumPath -Encoding ascii
 
   Write-Host "Created $zipPath"
