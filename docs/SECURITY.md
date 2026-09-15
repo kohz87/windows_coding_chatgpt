@@ -25,11 +25,33 @@ Windows Coding Agent does not expose its own unauthenticated public TCP/HTTP lis
 
 The tunnel runtime uses a restricted `CONTROL_PLANE_API_KEY` with Tunnels Read + Use. `Connect-ChatGPT.cmd` prompts for that key without echo and places it in the current process environment. The Windows Coding Agent repository registry does not persist it.
 
-Do not use an organization admin key as the long-lived runtime credential. Do not write literal runtime keys into the Windows Coding Agent repository, config example, or tunnel profile.
+Do not use an organization admin key as the long-lived runtime credential. Do not write literal runtime keys into the Windows Coding Agent repository, config example, tunnel profile, or wizard-state file.
 
 ChatGPT workspace app permissions form an outer permission layer. Enabling a Write action in ChatGPT permits ChatGPT to request that MCP operation; it does not disable Windows Coding Agent's local repository, worktree, Git, script, or publication guards.
 
 For write-capable apps, keep ChatGPT approval settings at the workspace's cautious/default level unless you have deliberately reviewed a different policy.
+
+## ChatGPT wizard state
+
+The guided launcher may persist non-secret connection metadata at:
+
+```text
+%USERPROFILE%\.windows-coding-agent\chatgpt-connection.json
+```
+
+or beneath `WINDOWS_CODING_AGENT_HOME` when that override is used.
+
+Allowed persisted fields are limited to connection metadata such as:
+
+- tunnel ID
+- tunnel-client executable path
+- local profile name
+- setup/diagnostic completion markers
+- timestamps
+
+The wizard state must not contain API keys, bearer tokens, GitHub credentials, or other secrets. CI includes a self-test that rejects secret-like state fields.
+
+Resetting only the ChatGPT connection removes this wizard state but leaves the repository registry and worktrees intact. The full-reset path requires an explicit `RESET` confirmation and backs up `config.json` before clearing active repository authorization.
 
 ## Canonical repositories are read-only to mutations
 
