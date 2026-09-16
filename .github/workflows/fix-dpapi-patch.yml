@@ -1,0 +1,39 @@
+name: Repair DPAPI patch newline handling
+
+on:
+  push:
+    branches:
+      - work/dpapi-v0.1.4
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/dpapi-v0.1.4
+          fetch-depth: 0
+      - name: Normalize documentation newlines in patch script
+        shell: powershell
+        run: |
+          $path = '.github/scripts/apply-dpapi-v014.ps1'
+          $text = Get-Content -LiteralPath $path -Raw
+          $old = '$chat = Get-Content -LiteralPath $chatPath -Raw'
+          $new = "$old`n`$chat = `$chat -replace \"``r``n\", \"``n\""
+          if ($text.Contains('$chat = $chat -replace "`r`n", "`n"')) {
+            Write-Host 'Patch script already normalized.'
+            exit 0
+          }
+          if (-not $text.Contains($old)) { throw 'ChatGPT guide load marker not found.' }
+          $text = $text.Replace($old, $new)
+          Set-Content -LiteralPath $path -Value $text -Encoding UTF8
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add $path
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git commit -m "fix: normalize guide newlines in DPAPI patch"
+          git push origin HEAD:work/dpapi-v0.1.4
