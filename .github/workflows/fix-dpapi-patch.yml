@@ -28,15 +28,16 @@ jobs:
             exit 0
           }
           if (-not $text.Contains($marker)) { throw 'Version bump marker not found.' }
-          $block = @'
-$filesToNormalize = @('Connect-ChatGPT.ps1', 'README.md', 'docs/CHATGPT.md', 'docs/SECURITY.md', 'docs/INSTALLATION.md')
-foreach ($fileToNormalize in $filesToNormalize) {
-  $normalizedContent = Get-Content -LiteralPath $fileToNormalize -Raw
-  $normalizedContent = $normalizedContent.TrimEnd("`r", "`n") + "`n"
-  [IO.File]::WriteAllText((Resolve-Path $fileToNormalize), $normalizedContent, [Text.UTF8Encoding]::new($false))
-}
-
-'@
+          $blockLines = @(
+            '$filesToNormalize = @(''Connect-ChatGPT.ps1'', ''README.md'', ''docs/CHATGPT.md'', ''docs/SECURITY.md'', ''docs/INSTALLATION.md'')',
+            'foreach ($fileToNormalize in $filesToNormalize) {',
+            '  $normalizedContent = Get-Content -LiteralPath $fileToNormalize -Raw',
+            '  $normalizedContent = $normalizedContent.TrimEnd("`r", "`n") + "`n"',
+            '  [IO.File]::WriteAllText((Resolve-Path $fileToNormalize), $normalizedContent, [Text.UTF8Encoding]::new($false))',
+            '}',
+            ''
+          )
+          $block = ($blockLines -join "`n") + "`n"
           $text = $text.Replace($marker, $block + $marker)
           $clean = $text.TrimEnd("`r", "`n") + "`n"
           [IO.File]::WriteAllText((Resolve-Path $path), $clean, [Text.UTF8Encoding]::new($false))
