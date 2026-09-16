@@ -1,0 +1,40 @@
+name: Repair Windows PowerShell DPAPI assembly loading
+
+on:
+  push:
+    branches:
+      - work/dpapi-v0.1.4
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/dpapi-v0.1.4
+          fetch-depth: 0
+      - name: Update DPAPI patch for Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $path = '.github/scripts/apply-dpapi-v014.ps1'
+          $text = Get-Content -LiteralPath $path -Raw
+          $text = $text.Replace('[Security.Cryptography.ProtectedData]', '[System.Security.Cryptography.ProtectedData]')
+          $text = $text.Replace('[Security.Cryptography.DataProtectionScope]', '[System.Security.Cryptography.DataProtectionScope]')
+          $marker = '$script:CredentialEntropy = [Text.Encoding]::UTF8.GetBytes(''windows-coding-agent:tunnel-runtime-key:v1'')'
+          $addition = $marker + "`nAdd-Type -AssemblyName System.Security -ErrorAction Stop"
+          if (-not $text.Contains('Add-Type -AssemblyName System.Security -ErrorAction Stop')) {
+            if (-not $text.Contains($marker)) { throw 'Credential entropy marker not found.' }
+            $text = $text.Replace($marker, $addition)
+          }
+          $clean = $text.TrimEnd("`r", "`n") + "`n"
+          [IO.File]::WriteAllText((Resolve-Path $path), $clean, [Text.UTF8Encoding]::new($false))
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add $path
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git commit -m "fix: load System.Security before DPAPI use"
+          git push origin HEAD:work/dpapi-v0.1.4
