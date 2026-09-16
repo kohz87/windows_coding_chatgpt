@@ -22,7 +22,10 @@ jobs:
           $path = '.github/scripts/apply-dpapi-v014.ps1'
           $text = Get-Content -LiteralPath $path -Raw
           $old = '$chat = Get-Content -LiteralPath $chatPath -Raw'
-          $new = "$old`n`$chat = `$chat -replace \"``r``n\", \"``n\""
+          $new = @'
+          $chat = Get-Content -LiteralPath $chatPath -Raw
+          $chat = $chat -replace "`r`n", "`n"
+          '@
           if ($text.Contains('$chat = $chat -replace "`r`n", "`n"')) {
             Write-Host 'Patch script already normalized.'
             exit 0
