@@ -20,6 +20,7 @@ $script:ConfigPath = Join-Path $script:AgentHome 'config.json'
 $script:SecretsPath = Join-Path $script:AgentHome 'secrets'
 $script:CredentialPath = Join-Path $script:SecretsPath 'tunnel-runtime-key.dpapi'
 $script:CredentialEntropy = [Text.Encoding]::UTF8.GetBytes('windows-coding-agent:tunnel-runtime-key:v1')
+Add-Type -AssemblyName System.Security -ErrorAction Stop
 '@
 $text = Replace-Once $text $old $new 'credential paths'
 
@@ -45,10 +46,10 @@ function Save-RuntimeCredential {
   $plainBytes = [Text.Encoding]::UTF8.GetBytes($PlainText)
   $protectedBytes = $null
   try {
-    $protectedBytes = [Security.Cryptography.ProtectedData]::Protect(
+    $protectedBytes = [System.Security.Cryptography.ProtectedData]::Protect(
       $plainBytes,
       $script:CredentialEntropy,
-      [Security.Cryptography.DataProtectionScope]::CurrentUser
+      [System.Security.Cryptography.DataProtectionScope]::CurrentUser
     )
     [IO.File]::WriteAllBytes($Path, $protectedBytes)
   } finally {
@@ -64,10 +65,10 @@ function Load-RuntimeCredential {
   $protectedBytes = [IO.File]::ReadAllBytes($Path)
   $plainBytes = $null
   try {
-    $plainBytes = [Security.Cryptography.ProtectedData]::Unprotect(
+    $plainBytes = [System.Security.Cryptography.ProtectedData]::Unprotect(
       $protectedBytes,
       $script:CredentialEntropy,
-      [Security.Cryptography.DataProtectionScope]::CurrentUser
+      [System.Security.Cryptography.DataProtectionScope]::CurrentUser
     )
     return [Text.Encoding]::UTF8.GetString($plainBytes)
   } finally {
