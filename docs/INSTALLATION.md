@@ -78,7 +78,7 @@ The wizard handles:
 5. creating the local stdio tunnel profile and running `tunnel-client doctor --explain`
 6. opening ChatGPT connection settings and showing the exact custom MCP app values
 
-The runtime API key is kept only in process memory and is never persisted by Windows Coding Agent.
+After entering the runtime API key, choose either **Save securely for this Windows user** (DPAPI-encrypted, recommended for convenience) or **Use only for this session**. The literal key is never written to JSON configuration or the package directory.
 
 After first-time setup, the same launcher becomes the day-to-day control panel. Choose `[1] Start ChatGPT bridge`, keep the terminal open, and stop it with `Ctrl+C` when finished.
 

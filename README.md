@@ -9,7 +9,7 @@ The important boundary is simple: **the human chooses repository directories loc
 - Friendly ASCII setup and repository-management screens
 - Guided `Connect-ChatGPT.cmd` wizard for ChatGPT + OpenAI Secure MCP Tunnel
 - Automatic opening of the official tunnel, API-key, tunnel-client, and ChatGPT setup pages when needed
-- Resume/reconfigure/fresh-setup flows without storing the runtime API key
+- Resume/reconfigure/fresh-setup flows with optional Windows DPAPI-secured runtime credential storage
 - Persistent repository registry under your Windows user profile
 - Read-only canonical repositories
 - Isolated writable `work/*` Git worktrees
@@ -49,7 +49,7 @@ For ChatGPT access:
 
 For GitHub publication, Git must already be authenticated for the repository by your normal Git credential setup.
 
-Windows Coding Agent does **not** store GitHub tokens or OpenAI runtime API keys in its repository registry or ChatGPT wizard state.
+Windows Coding Agent does **not** store GitHub tokens or literal OpenAI runtime API keys in its repository registry or ChatGPT wizard state. When you choose secure persistence, the tunnel runtime key is stored only as Windows DPAPI-encrypted ciphertext bound to the current Windows user.
 
 ## Quick start: ChatGPT -> local Git
 
@@ -124,7 +124,7 @@ Connect-ChatGPT.cmd
    -> [1] Start ChatGPT bridge
 ```
 
-The wizard asks for the runtime key again unless `CONTROL_PLANE_API_KEY` already exists, verifies the tunnel, optionally opens ChatGPT, and starts the foreground Secure MCP Tunnel.
+If you chose secure persistence, the wizard loads the DPAPI-protected runtime credential automatically. Otherwise it asks again unless `CONTROL_PLANE_API_KEY` already exists. It then verifies the tunnel, optionally opens ChatGPT, and starts the foreground Secure MCP Tunnel.
 
 Keep the terminal open while ChatGPT is using the local MCP. Stop it with `Ctrl+C`.
 
@@ -175,13 +175,13 @@ Default location:
 %USERPROFILE%\.windows-coding-agent\chatgpt-connection.json
 ```
 
-The runtime API key is never written there.
+The runtime API key is never written there. If secure persistence is enabled, encrypted ciphertext is stored separately at `%USERPROFILE%\.windows-coding-agent\secrets\tunnel-runtime-key.dpapi` (or under `WINDOWS_CODING_AGENT_HOME`).
 
 From the control panel you can:
 
 - resume the guided setup
 - change only the tunnel ID or tunnel-client path
-- validate a new runtime key
+- manage, test, replace, or forget the securely saved runtime credential
 - reopen the ChatGPT connection step
 - manage authorized repositories
 - reset only the ChatGPT connection while keeping repositories/worktrees
