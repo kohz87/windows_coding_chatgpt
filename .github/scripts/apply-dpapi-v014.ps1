@@ -384,5 +384,12 @@ $install = Get-Content -LiteralPath $installPath -Raw
 $install = Replace-Once $install 'The runtime API key is kept only in process memory and is never persisted by Windows Coding Agent.' 'After entering the runtime API key, choose either **Save securely for this Windows user** (DPAPI-encrypted, recommended for convenience) or **Use only for this session**. The literal key is never written to JSON configuration or the package directory.' 'INSTALLATION credential'
 Set-Content -LiteralPath $installPath -Value $install -Encoding UTF8
 
+$filesToNormalize = @('Connect-ChatGPT.ps1', 'README.md', 'docs/CHATGPT.md', 'docs/SECURITY.md', 'docs/INSTALLATION.md')
+foreach ($fileToNormalize in $filesToNormalize) {
+  $normalizedContent = Get-Content -LiteralPath $fileToNormalize -Raw
+  $normalizedContent = $normalizedContent.TrimEnd("`r", "`n") + "`n"
+  [IO.File]::WriteAllText((Resolve-Path $fileToNormalize), $normalizedContent, [Text.UTF8Encoding]::new($false))
+}
+
 npm version 0.1.4 --no-git-tag-version
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
