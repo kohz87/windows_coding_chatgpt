@@ -131,9 +131,9 @@ Tunnels
   [ ] Manage
 ```
 
-The key is entered with a hidden prompt. Windows Coding Agent places it only in the current process environment as `CONTROL_PLANE_API_KEY`.
+The key is entered with a hidden prompt. You can either save it securely for the current Windows user or keep it session-only. Secure persistence uses Windows DPAPI and stores only encrypted ciphertext; session-only mode places it only in the current process environment as `CONTROL_PLANE_API_KEY`.
 
-The literal key is **never saved** in `chatgpt-connection.json`, `config.json`, or the Windows Coding Agent source tree.
+The literal key is **never saved** in `chatgpt-connection.json`, `config.json`, the tunnel profile, or the Windows Coding Agent source tree. DPAPI ciphertext is stored separately at `%USERPROFILE%\.windows-coding-agent\secrets\tunnel-runtime-key.dpapi` when secure persistence is selected.
 
 You may instead set `CONTROL_PLANE_API_KEY` yourself before launching the wizard.
 
@@ -197,9 +197,9 @@ Saved values include only things such as:
 - whether tunnel `doctor` last succeeded
 - whether you confirmed the ChatGPT app step
 
-The runtime API key is intentionally absent.
+The runtime API key is intentionally absent. When secure persistence is enabled, the encrypted DPAPI blob lives under secrets\tunnel-runtime-key.dpapi instead. It can be decrypted only in the Windows user context that created it (subject to normal local-machine/user security boundaries).
 
-This lets the wizard resume without turning the setup file into a credential vault.
+This lets the wizard resume without turning the setup file into a plaintext credential vault.
 
 ## Normal daily startup
 
@@ -215,7 +215,7 @@ and choose:
 [1] Start ChatGPT bridge
 ```
 
-The launcher asks for the runtime key again unless `CONTROL_PLANE_API_KEY` is already present, reruns the tunnel diagnostic, optionally opens ChatGPT, then starts:
+The launcher first uses `CONTROL_PLANE_API_KEY` when already present, otherwise loads the DPAPI-protected saved credential when available, and only prompts when neither exists. It reruns the tunnel diagnostic, optionally opens ChatGPT, then starts:
 
 ```text
 tunnel-client run --profile windows-coding-agent
@@ -237,7 +237,7 @@ You can rerun the guided setup or change only one item:
 
 - tunnel ID
 - tunnel-client path
-- runtime API key validation
+- runtime credential management (replace, test, forget, or switch back to session-only)
 - ChatGPT app connection step
 - authorized repositories
 
@@ -271,6 +271,7 @@ Resets:
 
 - saved tunnel ID
 - saved tunnel-client path
+- securely saved DPAPI runtime credential, if one exists
 - wizard progress
 
 Keeps:

@@ -31,6 +31,10 @@ function Get-AgentHome {
 $script:AgentHome = Get-AgentHome
 $script:StatePath = Join-Path $script:AgentHome 'chatgpt-connection.json'
 $script:ConfigPath = Join-Path $script:AgentHome 'config.json'
+$script:SecretsPath = Join-Path $script:AgentHome 'secrets'
+$script:CredentialPath = Join-Path $script:SecretsPath 'tunnel-runtime-key.dpapi'
+$script:CredentialEntropy = [Text.Encoding]::UTF8.GetBytes('windows-coding-agent:tunnel-runtime-key:v1')
+Add-Type -AssemblyName System.Security -ErrorAction Stop
 
 function Show-Header {
   param([string]$RightText = '')
@@ -127,6 +131,63 @@ function Save-ConnectionState {
   Move-Item -LiteralPath $temporary -Destination $script:StatePath -Force
 }
 
+function Test-SavedRuntimeCredential {
+  param([string]$Path = $script:CredentialPath)
+  return (Test-Path -LiteralPath $Path -PathType Leaf)
+}
+
+function Save-RuntimeCredential {
+  param(
+    [Parameter(Mandatory = $true)][string]$PlainText,
+    [string]$Path = $script:CredentialPath
+  )
+
+  if ([string]::IsNullOrWhiteSpace($PlainText)) { throw 'Runtime credential cannot be empty.' }
+  $parent = Split-Path -Parent $Path
+  if (-not [string]::IsNullOrWhiteSpace($parent)) {
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+  }
+
+  $plainBytes = [Text.Encoding]::UTF8.GetBytes($PlainText)
+  $protectedBytes = $null
+  try {
+    $protectedBytes = [System.Security.Cryptography.ProtectedData]::Protect(
+      $plainBytes,
+      $script:CredentialEntropy,
+      [System.Security.Cryptography.DataProtectionScope]::CurrentUser
+    )
+    [IO.File]::WriteAllBytes($Path, $protectedBytes)
+  } finally {
+    if ($plainBytes) { [Array]::Clear($plainBytes, 0, $plainBytes.Length) }
+    if ($protectedBytes) { [Array]::Clear($protectedBytes, 0, $protectedBytes.Length) }
+  }
+}
+
+function Load-RuntimeCredential {
+  param([string]$Path = $script:CredentialPath)
+
+  if (-not (Test-SavedRuntimeCredential -Path $Path)) { return $null }
+  $protectedBytes = [IO.File]::ReadAllBytes($Path)
+  $plainBytes = $null
+  try {
+    $plainBytes = [System.Security.Cryptography.ProtectedData]::Unprotect(
+      $protectedBytes,
+      $script:CredentialEntropy,
+      [System.Security.Cryptography.DataProtectionScope]::CurrentUser
+    )
+    return [Text.Encoding]::UTF8.GetString($plainBytes)
+  } finally {
+    if ($protectedBytes) { [Array]::Clear($protectedBytes, 0, $protectedBytes.Length) }
+    if ($plainBytes) { [Array]::Clear($plainBytes, 0, $plainBytes.Length) }
+  }
+}
+
+function Remove-SavedRuntimeCredential {
+  param([string]$Path = $script:CredentialPath)
+  if (Test-Path -LiteralPath $Path -PathType Leaf) {
+    Remove-Item -LiteralPath $Path -Force
+  }
+}
 function Get-RepositoryCount {
   if (-not (Test-Path -LiteralPath $script:ConfigPath -PathType Leaf)) { return 0 }
   try {
@@ -283,9 +344,29 @@ function Read-RuntimeApiKey {
     return $true
   }
 
+  if (-not $ForcePrompt -and (Test-SavedRuntimeCredential)) {
+    $savedCredential = $null
+    try {
+      $savedCredential = Load-RuntimeCredential
+      if (-not [string]::IsNullOrWhiteSpace($savedCredential)) {
+        $env:CONTROL_PLANE_API_KEY = $savedCredential
+        return $true
+      }
+    } catch {
+      Show-Header -RightText 'Runtime credential'
+      Write-Host '  [!] The securely saved runtime credential could not be decrypted.' -ForegroundColor Yellow
+      Write-Host '      It may belong to a different Windows user/profile or be damaged.'
+      Write-Host '      Enter a replacement credential to continue.'
+      Write-Host ''
+      Read-Host '  Press Enter to continue' | Out-Null
+    } finally {
+      $savedCredential = $null
+    }
+  }
+
   while ($true) {
     Show-Header -RightText 'Setup  4 / 6'
-    Write-Host '  [>>] CREATE RUNTIME API KEY'
+    Write-Host '  [>>] RUNTIME API KEY'
     Write-Host ''
     Write-Host '  Create a RESTRICTED runtime key with:'
     Write-Host ''
@@ -294,9 +375,14 @@ function Read-RuntimeApiKey {
     Write-Host '        [x] Use'
     Write-Host '        [ ] Manage'
     Write-Host ''
-    Write-Host '  The key is kept only in this process memory.'
-    Write-Host '  It is NOT written to Windows Coding Agent configuration.'
+    Write-Host '  Windows Coding Agent can remember the key using Windows DPAPI.'
+    Write-Host '  The saved file contains encrypted ciphertext bound to this Windows user.'
+    Write-Host '  The literal key is never written to config.json or wizard state.'
     Write-Host ''
+    if (Test-SavedRuntimeCredential) {
+      Write-Host '  Saved credential: [OK] encrypted for this Windows user' -ForegroundColor Green
+      Write-Host ''
+    }
     Write-Host '     [O] Open API Keys page'
     Write-Host '     [E] Enter runtime API key'
     Write-Host '     [B] Back'
@@ -318,7 +404,30 @@ function Read-RuntimeApiKey {
         Write-Host '  [X] Runtime API key cannot be empty.' -ForegroundColor Red
         continue
       }
+
       $env:CONTROL_PLANE_API_KEY = $plainKey
+      Write-Host ''
+      Write-Host '  How should this key be handled?'
+      Write-Host ''
+      Write-Host '     [1] Save securely for this Windows user   (recommended)'
+      Write-Host '     [2] Use only for this session'
+      Write-Host ''
+      $storageChoice = Read-Choice '  Select' @('1','2')
+      if ($storageChoice -eq '1') {
+        try {
+          Save-RuntimeCredential -PlainText $plainKey
+          Write-Host ''
+          Write-Host '  [OK] Runtime credential saved with Windows DPAPI.' -ForegroundColor Green
+        } catch {
+          Write-Host ''
+          Write-Host '  [!] Secure save failed. The key will be used for this session only.' -ForegroundColor Yellow
+          Write-Host ('      {0}' -f $_.Exception.Message)
+        }
+      } else {
+        Remove-SavedRuntimeCredential
+        Write-Host ''
+        Write-Host '  [OK] Session-only mode selected. No saved credential remains.'
+      }
       return $true
     } finally {
       if ($bstr -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
@@ -671,6 +780,73 @@ function Invoke-Diagnostics {
   }
 }
 
+function Invoke-CredentialMenu {
+  param($State)
+
+  while ($true) {
+    Show-Header -RightText 'Runtime credential'
+    Write-Status 'Securely saved' $(if (Test-SavedRuntimeCredential) { '[OK] DPAPI / current user' } else { '[--] not saved' })
+    Write-Status 'Current process' $(if (-not [string]::IsNullOrWhiteSpace($env:CONTROL_PLANE_API_KEY)) { '[OK] loaded' } else { '[--] not loaded' })
+    Write-Host ''
+    Write-Host '     [1] Enter / replace runtime credential'
+    Write-Host '     [2] Test saved credential'
+    Write-Host '     [3] Forget saved credential'
+    Write-Host '     [B] Back'
+    Write-Host ''
+    $choice = Read-Choice '  Select' @('1','2','3','B')
+    if ($choice -eq 'B') { return }
+
+    if ($choice -eq '1') {
+      $env:CONTROL_PLANE_API_KEY = $null
+      if (Read-RuntimeApiKey -ForcePrompt) {
+        $clientPath = Get-ExistingTunnelClientPath -State $State
+        if ($clientPath -and (Test-TunnelId $State.tunnelId)) {
+          Invoke-TunnelDoctor -State $State -ClientPath $clientPath | Out-Null
+          Read-Host '  Press Enter to continue' | Out-Null
+        }
+      }
+      continue
+    }
+
+    if ($choice -eq '2') {
+      if (-not (Test-SavedRuntimeCredential)) {
+        Write-Host ''
+        Write-Host '  [!] No securely saved runtime credential exists.' -ForegroundColor Yellow
+        Read-Host '  Press Enter to continue' | Out-Null
+        continue
+      }
+      $env:CONTROL_PLANE_API_KEY = $null
+      try {
+        $savedCredential = Load-RuntimeCredential
+        if ([string]::IsNullOrWhiteSpace($savedCredential)) { throw 'Saved credential decrypted to an empty value.' }
+        $env:CONTROL_PLANE_API_KEY = $savedCredential
+        $savedCredential = $null
+        $clientPath = Get-ExistingTunnelClientPath -State $State
+        if ($clientPath -and (Test-TunnelId $State.tunnelId)) {
+          Invoke-TunnelDoctor -State $State -ClientPath $clientPath | Out-Null
+        } else {
+          Write-Host ''
+          Write-Host '  [OK] Saved credential decrypted successfully.' -ForegroundColor Green
+          Write-Host '      Configure a tunnel before running the full remote diagnostic.'
+        }
+      } catch {
+        Write-Host ''
+        Write-Host '  [X] Saved credential could not be used.' -ForegroundColor Red
+        Write-Host ('      {0}' -f $_.Exception.Message)
+      } finally {
+        $savedCredential = $null
+      }
+      Read-Host '  Press Enter to continue' | Out-Null
+      continue
+    }
+
+    Remove-SavedRuntimeCredential
+    $env:CONTROL_PLANE_API_KEY = $null
+    Write-Host ''
+    Write-Host '  [OK] Saved runtime credential removed. Future starts will ask again.' -ForegroundColor Green
+    Read-Host '  Press Enter to continue' | Out-Null
+  }
+}
 function Invoke-ReconfigureMenu {
   param($State)
 
@@ -680,7 +856,7 @@ function Invoke-ReconfigureMenu {
     Write-Host ''
     Write-Host '     [1] Change tunnel ID'
     Write-Host '     [2] Change tunnel-client location'
-    Write-Host '     [3] Re-enter / validate runtime API key'
+    Write-Host '     [3] Manage runtime credential'
     Write-Host '     [4] Re-open ChatGPT app setup'
     Write-Host '     [5] Manage authorized repositories'
     Write-Host '     [B] Back'
@@ -703,14 +879,7 @@ function Invoke-ReconfigureMenu {
       continue
     }
     if ($choice -eq '3') {
-      $env:CONTROL_PLANE_API_KEY = $null
-      if (Read-RuntimeApiKey -ForcePrompt) {
-        $clientPath = Get-ExistingTunnelClientPath -State $State
-        if ($clientPath -and (Test-TunnelId $State.tunnelId)) {
-          Invoke-TunnelDoctor -State $State -ClientPath $clientPath | Out-Null
-        }
-      }
-      Read-Host '  Press Enter to continue' | Out-Null
+      Invoke-CredentialMenu -State $State
       continue
     }
     if ($choice -eq '4') {
@@ -730,6 +899,7 @@ function Reset-ChatGPTConnection {
   if (Test-Path -LiteralPath $script:StatePath -PathType Leaf) {
     Remove-Item -LiteralPath $script:StatePath -Force
   }
+  Remove-SavedRuntimeCredential
   $env:CONTROL_PLANE_API_KEY = $null
   $env:CONTROL_PLANE_TUNNEL_ID = $null
 }
@@ -804,6 +974,7 @@ function Show-MainMenu {
     Write-Status 'Local repositories' $(if ($repoCount -gt 0) { "[OK] $repoCount authorized" } else { '[--] not configured' })
     Write-Status 'Tunnel client' $(if ($clientPath) { '[OK] found' } else { '[--] not configured' })
     Write-Status 'OpenAI tunnel' $(if (Test-TunnelId $state.tunnelId) { '[OK] configured' } else { '[--] not configured' })
+    Write-Status 'Runtime credential' $(if (Test-SavedRuntimeCredential) { '[OK] securely saved' } elseif (-not [string]::IsNullOrWhiteSpace($env:CONTROL_PLANE_API_KEY)) { '[OK] session only' } else { '[--] prompt on start' })
     Write-Status 'ChatGPT app' $(if ($state.chatgptConfigured) { '[OK] confirmed' } else { '[--] not confirmed' })
     Write-Host ''
     Write-Rule
@@ -870,7 +1041,23 @@ if ($SelfTest) {
   if (-not $mcpCommand.StartsWith('node --import=file:///')) { throw "Unexpected MCP command prefix: $mcpCommand" }
   if ($mcpCommand -notmatch '%20') { throw "MCP command did not URI-encode spaces: $mcpCommand" }
   if (-not $mcpCommand.EndsWith(' -e 0')) { throw "Unexpected MCP command suffix: $mcpCommand" }
-  Write-Host 'SELFTEST OK - wizard state is secret-free; validators and quote-safe MCP command passed.'
+  $credentialTestRoot = Join-Path ([IO.Path]::GetTempPath()) ('wca-dpapi-selftest-' + [Guid]::NewGuid().ToString('N'))
+  $credentialTestPath = Join-Path $credentialTestRoot 'runtime.dpapi'
+  $credentialProbe = 'wca-dpapi-probe-' + [Guid]::NewGuid().ToString('N')
+  try {
+    Save-RuntimeCredential -PlainText $credentialProbe -Path $credentialTestPath
+    if (-not (Test-SavedRuntimeCredential -Path $credentialTestPath)) { throw 'DPAPI credential file was not created.' }
+    $cipherBytes = [IO.File]::ReadAllBytes($credentialTestPath)
+    $cipherText = [Text.Encoding]::UTF8.GetString($cipherBytes)
+    if ($cipherText.Contains($credentialProbe)) { throw 'DPAPI credential file contains the plaintext probe.' }
+    $roundTrip = Load-RuntimeCredential -Path $credentialTestPath
+    if ($roundTrip -ne $credentialProbe) { throw 'DPAPI credential round-trip did not recover the original value.' }
+  } finally {
+    $credentialProbe = $null
+    $roundTrip = $null
+    if (Test-Path -LiteralPath $credentialTestRoot) { Remove-Item -LiteralPath $credentialTestRoot -Recurse -Force }
+  }
+  Write-Host 'SELFTEST OK - wizard state is secret-free; validators, quote-safe MCP command, and DPAPI credential round-trip passed.'
   exit 0
 }
 
