@@ -1,4 +1,4 @@
-name: Repair DPAPI patch newline handling
+name: Repair DPAPI patch output formatting
 
 on:
   push:
@@ -16,22 +16,28 @@ jobs:
         with:
           ref: work/dpapi-v0.1.4
           fetch-depth: 0
-      - name: Normalize documentation newlines in patch script
+      - name: Normalize generated file endings in patch script
         shell: powershell
         run: |
           $path = '.github/scripts/apply-dpapi-v014.ps1'
           $text = Get-Content -LiteralPath $path -Raw
-          $old = '$chat = Get-Content -LiteralPath $chatPath -Raw'
-          $new = @'
-          $chat = Get-Content -LiteralPath $chatPath -Raw
-          $chat = $chat -replace "`r`n", "`n"
-          '@
-          if ($text.Contains('$chat = $chat -replace "`r`n", "`n"')) {
-            Write-Host 'Patch script already normalized.'
+          $marker = 'npm version 0.1.4 --no-git-tag-version'
+          $needle = '$filesToNormalize = @(''Connect-ChatGPT.ps1'', ''README.md'', ''docs/CHATGPT.md'', ''docs/SECURITY.md'', ''docs/INSTALLATION.md'')'
+          if ($text.Contains($needle)) {
+            Write-Host 'Patch output normalizer already present.'
             exit 0
           }
-          if (-not $text.Contains($old)) { throw 'ChatGPT guide load marker not found.' }
-          $text = $text.Replace($old, $new)
+          if (-not $text.Contains($marker)) { throw 'Version bump marker not found.' }
+          $block = @'
+$filesToNormalize = @('Connect-ChatGPT.ps1', 'README.md', 'docs/CHATGPT.md', 'docs/SECURITY.md', 'docs/INSTALLATION.md')
+foreach ($fileToNormalize in $filesToNormalize) {
+  $normalizedContent = Get-Content -LiteralPath $fileToNormalize -Raw
+  $normalizedContent = $normalizedContent.TrimEnd("`r", "`n") + "`n"
+  [IO.File]::WriteAllText((Resolve-Path $fileToNormalize), $normalizedContent, [Text.UTF8Encoding]::new($false))
+}
+
+'@
+          $text = $text.Replace($marker, $block + $marker)
           $clean = $text.TrimEnd("`r", "`n") + "`n"
           [IO.File]::WriteAllText((Resolve-Path $path), $clean, [Text.UTF8Encoding]::new($false))
           git config user.name "github-actions[bot]"
@@ -39,5 +45,5 @@ jobs:
           git add $path
           git diff --cached --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git commit -m "fix: normalize guide newlines in DPAPI patch"
+          git commit -m "fix: normalize DPAPI patch output endings"
           git push origin HEAD:work/dpapi-v0.1.4
