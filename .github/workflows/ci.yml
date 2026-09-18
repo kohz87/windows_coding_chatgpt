@@ -12,21 +12,42 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install
+      - run: npm ci
       - run: npm test
       - run: npm run validate
       - name: MCP SDK smoke check
         run: node --input-type=module -e "import { McpServer } from '@modelcontextprotocol/server'; import { serveStdio } from '@modelcontextprotocol/server/stdio'; if (!McpServer || !serveStdio) process.exit(1)"
-      - name: ChatGPT wizard smoke check
+      - name: PowerShell maintenance and wizard smoke checks
         shell: powershell
         run: |
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path '.\Connect-ChatGPT.ps1'), [ref]$null, [ref]$errors) | Out-Null
-          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          foreach ($script in @('.\Connect-ChatGPT.ps1','.\Toolchain.ps1','.\Install-Dependencies.ps1','.\Update.ps1','.\bootstrap\launch.ps1')) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script), [ref]$null, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error "$script : $($_.Message)" }; exit 1 }
+          }
+          powershell -NoProfile -ExecutionPolicy Bypass -Command ". .\Toolchain.ps1; Invoke-WcaToolchainSelfTest"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Dependencies.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\Update.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -NoProfile -ExecutionPolicy Bypass -File .\Connect-ChatGPT.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -NoProfile -ExecutionPolicy Bypass -File .\Connect-ChatGPT.ps1 -ShowInstructions -TunnelId tunnel_ci_test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Stable bootstrap active-version smoke check
+        shell: powershell
+        run: |
+          $home = Join-Path $env:RUNNER_TEMP 'WCA Managed Home With Spaces'
+          $versionRoot = Join-Path $home 'versions\v9.9.9'
+          New-Item -ItemType Directory -Force -Path (Join-Path $versionRoot 'src'), (Join-Path $home 'bootstrap') | Out-Null
+          "process.stdout.write('STABLE_BOOTSTRAP_OK')" | Set-Content -LiteralPath (Join-Path $versionRoot 'src\index.js') -Encoding ascii
+          Copy-Item .\bootstrap\mcp-loader.mjs (Join-Path $home 'bootstrap\mcp-loader.mjs')
+          @{ schemaVersion = 1; activeVersion = '9.9.9'; path = $versionRoot; lastKnownGoodVersion = ''; lastKnownGoodPath = '' } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $home 'active-version.json') -Encoding utf8
+          $env:WINDOWS_CODING_AGENT_HOME = $home
+          $uri = ([System.Uri]::new((Resolve-Path (Join-Path $home 'bootstrap\mcp-loader.mjs')).Path)).AbsoluteUri
+          $output = & node "--import=$uri" -e 0
+          if ($LASTEXITCODE -ne 0 -or ($output -join '') -ne 'STABLE_BOOTSTRAP_OK') { throw 'Stable MCP bootstrap smoke test failed.' }
       - name: MCP file URI path-with-spaces smoke check
         shell: powershell
         run: |
@@ -52,8 +73,12 @@ jobs:
           $extract = Join-Path $env:RUNNER_TEMP 'wca-package-smoke'
           Expand-Archive -Path $zip.FullName -DestinationPath $extract -Force
           $bundle = Get-ChildItem $extract -Directory | Select-Object -First 1
-          foreach ($required in @('Setup.cmd', 'Start-Agent.cmd', 'Connect-ChatGPT.cmd', 'Connect-ChatGPT.ps1', 'package.json', 'package-lock.json', 'README.md', 'LICENSE', 'VERSION.txt', 'src', 'docs')) {
+          foreach ($required in @('Setup.cmd','Start-Agent.cmd','Connect-ChatGPT.cmd','Connect-ChatGPT.ps1','Toolchain.ps1','Install-Dependencies.cmd','Install-Dependencies.ps1','Update.cmd','Update.ps1','package.json','package-lock.json','README.md','LICENSE','VERSION.txt','src','docs','test','bootstrap','scripts')) {
             if (-not (Test-Path (Join-Path $bundle.FullName $required))) { throw "Package is missing $required." }
           }
+          powershell -NoProfile -ExecutionPolicy Bypass -Command ". '$(Join-Path $bundle.FullName 'Toolchain.ps1')'; Invoke-WcaToolchainSelfTest"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bundle.FullName 'Update.ps1') -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bundle.FullName 'Connect-ChatGPT.ps1') -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
