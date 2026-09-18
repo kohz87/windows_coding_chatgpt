@@ -1,12 +1,11 @@
 @echo off
 setlocal
-cd /d "%~dp0"
-where node >nul 2>nul || (
-  echo Node.js was not found. Install Node.js 20 or newer and try again.
-  exit /b 1
+set "WCA_HOME=%WINDOWS_CODING_AGENT_HOME%"
+if "%WCA_HOME%"=="" set "WCA_HOME=%USERPROFILE%\.windows-coding-agent"
+if exist "%WCA_HOME%\bin\Start-Agent.cmd" (
+  call "%WCA_HOME%\bin\Start-Agent.cmd" %*
+  exit /b %ERRORLEVEL%
 )
-if not exist node_modules (
-  echo Dependencies are missing. Run Setup.cmd first.
-  exit /b 1
-)
-node src\startup.js
+echo Windows Coding Agent is not installed in its managed location.
+echo Run Setup.cmd first.
+exit /b 1

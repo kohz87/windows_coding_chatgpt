@@ -28,12 +28,19 @@ try {
   $items = @(
     'src',
     'docs',
+    'test',
+    'bootstrap',
+    'scripts',
     'Setup.cmd',
     'Start-Agent.cmd',
     'Connect-ChatGPT.cmd',
     'Connect-ChatGPT.ps1',
+    'Toolchain.ps1',
+    'Install-Dependencies.cmd',
+    'Install-Dependencies.ps1',
     'Doctor.cmd',
     'Update.cmd',
+    'Update.ps1',
     'config.example.json',
     'package.json',
     'package-lock.json',
@@ -54,7 +61,8 @@ try {
     "Commit: $commitText",
     '',
     'Unzip this directory and run Setup.cmd.',
-    'For ChatGPT access, complete Setup.cmd and then run Connect-ChatGPT.cmd.'
+    'Setup can install or repair required dependencies and creates a managed user-scoped installation.',
+    'For ChatGPT access, use the stable launcher under .windows-coding-agent\bin or run Connect-ChatGPT.cmd.'
   ) | Set-Content -Path (Join-Path $bundleRoot 'VERSION.txt') -Encoding ascii
 
   $zipPath = Join-Path $outputRoot "$bundleName.zip"

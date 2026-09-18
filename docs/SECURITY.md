@@ -155,3 +155,17 @@ When the user chooses **Save securely for this Windows user**, the launcher encr
 or the equivalent path beneath `WINDOWS_CODING_AGENT_HOME`.
 
 DPAPI protects the credential at rest against simple file disclosure, but it is not a boundary against malware, an administrator, or another process already able to operate as the same Windows user. The launcher decrypts the key only when needed, exports it to `CONTROL_PLANE_API_KEY` for the current process tree, and never writes the plaintext value to JSON configuration or tunnel profiles.
+
+## Managed runtime and updater boundary
+
+v0.1.5 separates the stable local control plane from any extracted release directory. The Secure MCP Tunnel targets the user-scoped `bootstrap\mcp-loader.mjs`, which will only load an active installation path contained under `%USERPROFILE%\.windows-coding-agent\versions\` (or the configured `WINDOWS_CODING_AGENT_HOME`). If the active version is unavailable, the bootstrap may fall back only to a recorded last-known-good path inside that same managed versions root.
+
+`toolchain.json` contains discovered executable paths, versions, status information, and timestamps. It is not a credential store. Runtime API keys remain separately DPAPI-protected when secure persistence is enabled.
+
+Dependency installation is an explicit local operation. Node.js LTS and Git may be installed through WinGet after user confirmation. Automatic tunnel-client installation is restricted to the official OpenAI GitHub release and requires SHA-256 verification before extraction. The code may remove the ordinary Internet-zone marker only from that verified official download; it does not disable or bypass Windows Application Control, WDAC, AppLocker, or Smart App Control.
+
+Agent updates are also local human-approved maintenance operations. The updater downloads a versioned GitHub release asset, verifies SHA-256, stages the candidate, installs locked dependencies with `npm ci --ignore-scripts`, runs tests and validation, and only then changes the active-version pointer. Failed candidates do not replace the current active version. The MCP surface deliberately does not expose an unrestricted self-update or dependency-install command to a remote ChatGPT session.
+
+## Package managers
+
+Repository setup records a detected package manager (`npm`, `pnpm`, or `yarn`) and an allowlist of package scripts. The MCP can invoke only those allowlisted scripts. Package-manager detection does not create an arbitrary shell capability, and optional package managers are installed only through local maintenance flows.

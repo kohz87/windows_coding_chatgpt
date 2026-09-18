@@ -1,12 +1,23 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-where node >nul 2>nul || (
-  echo Node.js was not found. Install Node.js 20 or newer and try again.
+where powershell >nul 2>nul || (
+  echo Windows PowerShell was not found.
   exit /b 1
 )
-if not exist node_modules (
-  echo Installing dependencies...
-  call npm install || exit /b 1
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Install-Dependencies.ps1" -RequiredOnly
+if errorlevel 1 exit /b %ERRORLEVEL%
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Update.ps1" -InstallCurrent -Yes
+if errorlevel 1 exit /b %ERRORLEVEL%
+
+set "WCA_HOME=%WINDOWS_CODING_AGENT_HOME%"
+if "%WCA_HOME%"=="" set "WCA_HOME=%USERPROFILE%\.windows-coding-agent"
+if not exist "%WCA_HOME%\bin\Setup.cmd" (
+  echo Managed launcher was not created.
+  exit /b 1
 )
-node src\setup.js
+
+call "%WCA_HOME%\bin\Setup.cmd"
+exit /b %ERRORLEVEL%

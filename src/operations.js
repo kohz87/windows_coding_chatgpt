@@ -38,19 +38,26 @@ export async function repositoryRemoteStatus(repo) {
   return { repositoryId: repo.id, github: repo.github, branch: repo.defaultBranch, remoteHead };
 }
 
-export async function runAllowedNpmScript(config, workspaceId, script, env = process.env) {
+export async function runAllowedPackageScript(config, workspaceId, script, env = process.env) {
   const ws = await resolveWorkspace(config, workspaceId, env);
   if (!ws.repository.permissions.runScripts) throw new Error('Script execution is disabled for this repository.');
-  if (!ws.repository.allowedNpmScripts.includes(script)) throw new Error(`npm script '${script}' is not in the repository allowlist.`);
+  const allowedScripts = ws.repository.allowedPackageScripts ?? ws.repository.allowedNpmScripts ?? [];
+  if (!allowedScripts.includes(script)) throw new Error(`Package script '${script}' is not in the repository allowlist.`);
   const pkg = JSON.parse(await readFile(path.join(ws.path, 'package.json'), 'utf8'));
-  if (typeof pkg.scripts?.[script] !== 'string') throw new Error(`npm script '${script}' is not defined.`);
+  if (typeof pkg.scripts?.[script] !== 'string') throw new Error(`Package script '${script}' is not defined.`);
+
+  const manager = ws.repository.packageManager ?? 'npm';
+  const command = process.platform === 'win32' ? `${manager}.cmd` : manager;
   try {
-    const command = process.platform === 'win32' ? 'npm.cmd' : 'npm';
     const { stdout, stderr } = await execFileAsync(command, ['run', script], { cwd: ws.path, windowsHide: true, timeout: 10 * 60_000, maxBuffer: 20 * 1024 * 1024 });
-    return { ok: true, stdout: String(stdout ?? '').slice(-100_000), stderr: String(stderr ?? '').slice(-50_000) };
+    return { ok: true, packageManager: manager, stdout: String(stdout ?? '').slice(-100_000), stderr: String(stderr ?? '').slice(-50_000) };
   } catch (error) {
-    return { ok: false, stdout: String(error.stdout ?? '').slice(-100_000), stderr: String(error.stderr ?? '').slice(-50_000), error: error.message };
+    return { ok: false, packageManager: manager, stdout: String(error.stdout ?? '').slice(-100_000), stderr: String(error.stderr ?? '').slice(-50_000), error: error.message };
   }
+}
+
+export async function runAllowedNpmScript(config, workspaceId, script, env = process.env) {
+  return runAllowedPackageScript(config, workspaceId, script, env);
 }
 
 export async function commitWorkspace(config, workspaceId, expectedHead, message, env = process.env) {

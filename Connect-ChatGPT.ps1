@@ -5,6 +5,7 @@ param(
   [switch]$ConfigureOnly,
   [switch]$ShowInstructions,
   [switch]$ResetSetup,
+  [switch]$RepairOnly,
   [switch]$SelfTest
 )
 
@@ -15,9 +16,17 @@ $script:ApiKeysUrl = 'https://platform.openai.com/settings/organization/api-keys
 $script:ChatGPTUrl = 'https://chatgpt.com/#settings/Connectors'
 $script:TunnelClientUrl = 'https://github.com/openai/tunnel-client/releases/latest'
 $script:RepoRoot = (Resolve-Path $PSScriptRoot).Path
-$script:ServerPath = Join-Path $script:RepoRoot 'src\index.js'
+$script:ToolchainScript = Join-Path $script:RepoRoot 'Toolchain.ps1'
+if (-not (Test-Path -LiteralPath $script:ToolchainScript -PathType Leaf)) {
+  throw "Toolchain.ps1 was not found: $script:ToolchainScript"
+}
+. $script:ToolchainScript
+$script:CurrentVersion = Get-WcaPackageVersion -SourceRoot $script:RepoRoot
+$script:BootstrapPath = Get-WcaStableMcpBootstrapPath
 $script:SetupCmd = Join-Path $script:RepoRoot 'Setup.cmd'
 $script:ManagerCmd = Join-Path $script:RepoRoot 'Start-Agent.cmd'
+$script:DependencyInstaller = Join-Path $script:RepoRoot 'Install-Dependencies.ps1'
+$script:Updater = Join-Path $script:RepoRoot 'Update.ps1'
 
 function Get-AgentHome {
   if (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_CODING_AGENT_HOME)) {
@@ -95,6 +104,8 @@ function New-ConnectionState {
     profileName = $ProfileName
     tunnelId = ''
     tunnelClientPath = ''
+    mcpCommand = ''
+    managedVersion = ''
     profileConfigured = $false
     chatgptConfigured = $false
     lastDoctorOk = ''
@@ -111,6 +122,8 @@ function Load-ConnectionState {
       if (Test-ProfileName ([string]$raw.profileName)) { $state.profileName = [string]$raw.profileName }
       if (Test-TunnelId ([string]$raw.tunnelId)) { $state.tunnelId = [string]$raw.tunnelId }
       if (-not [string]::IsNullOrWhiteSpace([string]$raw.tunnelClientPath)) { $state.tunnelClientPath = [string]$raw.tunnelClientPath }
+      if (-not [string]::IsNullOrWhiteSpace([string]$raw.mcpCommand)) { $state.mcpCommand = [string]$raw.mcpCommand }
+      if (-not [string]::IsNullOrWhiteSpace([string]$raw.managedVersion)) { $state.managedVersion = [string]$raw.managedVersion }
       $state.profileConfigured = [bool]$raw.profileConfigured
       $state.chatgptConfigured = [bool]$raw.chatgptConfigured
       $state.lastDoctorOk = [string]$raw.lastDoctorOk
@@ -200,40 +213,33 @@ function Get-RepositoryCount {
 }
 
 function Get-NodePath {
-  $command = Get-Command node.exe -ErrorAction SilentlyContinue
-  if (-not $command) { $command = Get-Command node -ErrorAction SilentlyContinue }
-  if ($command) { return $command.Source }
-  return $null
+  return (Resolve-WcaToolPath -Name node)
 }
-
 function Get-GitPath {
-  $command = Get-Command git.exe -ErrorAction SilentlyContinue
-  if (-not $command) { $command = Get-Command git -ErrorAction SilentlyContinue }
-  if ($command) { return $command.Source }
-  return $null
+  return (Resolve-WcaToolPath -Name git)
 }
 
+function Get-NpmPath {
+  return (Resolve-WcaToolPath -Name npm)
+}
+
+function Get-NpxPath {
+  return (Resolve-WcaToolPath -Name npx)
+}
 function Get-ExistingTunnelClientPath {
   param($State)
 
-  $candidates = @()
-  if (-not [string]::IsNullOrWhiteSpace($TunnelClient)) { $candidates += $TunnelClient }
-  if (-not [string]::IsNullOrWhiteSpace($env:TUNNEL_CLIENT_BIN)) { $candidates += $env:TUNNEL_CLIENT_BIN }
-  if (-not [string]::IsNullOrWhiteSpace([string]$State.tunnelClientPath)) { $candidates += [string]$State.tunnelClientPath }
+  $hints = @()
+  if (-not [string]::IsNullOrWhiteSpace($TunnelClient)) { $hints += $TunnelClient }
+  if (-not [string]::IsNullOrWhiteSpace($env:TUNNEL_CLIENT_BIN)) { $hints += $env:TUNNEL_CLIENT_BIN }
+  if (-not [string]::IsNullOrWhiteSpace([string]$State.tunnelClientPath)) { $hints += [string]$State.tunnelClientPath }
 
-  foreach ($candidate in $candidates) {
-    $trimmed = $candidate.Trim('"')
-    if (Test-Path -LiteralPath $trimmed -PathType Leaf) {
-      return (Resolve-Path -LiteralPath $trimmed).Path
-    }
+  foreach ($hint in $hints) {
+    $resolved = Resolve-WcaToolPath -Name tunnelClient -Hint $hint.Trim('"')
+    if ($resolved) { return $resolved }
   }
-
-  $found = Get-Command tunnel-client.exe -ErrorAction SilentlyContinue
-  if (-not $found) { $found = Get-Command tunnel-client -ErrorAction SilentlyContinue }
-  if ($found) { return $found.Source }
-  return $null
+  return (Resolve-WcaToolPath -Name tunnelClient)
 }
-
 function Select-TunnelClient {
   param($State, [int]$StepNumber = 2)
 
@@ -242,6 +248,7 @@ function Select-TunnelClient {
     if ($existing) {
       $State.tunnelClientPath = $existing
       Save-ConnectionState -State $State
+      Refresh-WcaToolchain -TunnelClientHint $existing | Out-Null
       return $existing
     }
 
@@ -251,33 +258,51 @@ function Select-TunnelClient {
     Write-Host '  The official tunnel client connects this PC to ChatGPT'
     Write-Host '  using an outbound-only encrypted connection.'
     Write-Host ''
-    Write-Host '     [1] Open official download page'
-    Write-Host '     [2] Enter path to tunnel-client.exe'
-    Write-Host '     [3] Check PATH again'
+    Write-Host '     [1] Install official tunnel-client automatically'
+    Write-Host '     [2] Open official download page'
+    Write-Host '     [3] Enter path to tunnel-client.exe'
+    Write-Host '     [4] Scan again'
     Write-Host '     [B] Back'
     Write-Host ''
-    $choice = Read-Choice '  Select' @('1','2','3','B')
+    $choice = Read-Choice '  Select' @('1','2','3','4','B')
     if ($choice -eq '1') {
-      Open-SetupPage $script:TunnelClientUrl | Out-Null
+      try {
+        $resolved = Install-WcaTunnelClient
+        $State.tunnelClientPath = $resolved
+        Save-ConnectionState -State $State
+        return $resolved
+      } catch {
+        Write-Host ''
+        Write-Host ('  [X] Automatic tunnel-client installation failed: {0}' -f $_.Exception.Message) -ForegroundColor Red
+        Write-Host '      You can use the official download page instead.'
+        Read-Host '  Press Enter to continue' | Out-Null
+      }
       continue
     }
     if ($choice -eq '2') {
+      Open-SetupPage $script:TunnelClientUrl | Out-Null
+      continue
+    }
+    if ($choice -eq '3') {
       $manualPath = (Read-Host '  Full path to tunnel-client.exe').Trim().Trim('"')
       if (Test-Path -LiteralPath $manualPath -PathType Leaf) {
         $resolved = (Resolve-Path -LiteralPath $manualPath).Path
         $State.tunnelClientPath = $resolved
         Save-ConnectionState -State $State
+        Refresh-WcaToolchain -TunnelClientHint $resolved | Out-Null
         return $resolved
       }
       Write-Host '  [X] That file was not found.' -ForegroundColor Red
       Read-Host '  Press Enter to continue' | Out-Null
       continue
     }
-    if ($choice -eq '3') { continue }
+    if ($choice -eq '4') {
+      Refresh-WcaToolchain | Out-Null
+      continue
+    }
     return $null
   }
 }
-
 function Get-TunnelIdStep {
   param($State)
 
@@ -436,26 +461,101 @@ function Read-RuntimeApiKey {
   }
 }
 
+
+function Invoke-TunnelNative {
+  param(
+    [Parameter(Mandatory = $true)][string]$ClientPath,
+    [Parameter(Mandatory = $true)][string[]]$Arguments
+  )
+  try {
+    & $ClientPath @Arguments
+    return [pscustomobject]@{ ok = ($LASTEXITCODE -eq 0); exitCode = $LASTEXITCODE; blocked = $false; message = '' }
+  } catch {
+    $message = $_.Exception.Message
+    if (Test-WcaApplicationControlMessage $message) {
+      Show-WcaApplicationControlHelp -Path $ClientPath -Message $message
+      return [pscustomobject]@{ ok = $false; exitCode = -1; blocked = $true; message = $message }
+    }
+    Write-Host ''
+    Write-Host ('  [X] tunnel-client could not start: {0}' -f $message) -ForegroundColor Red
+    return [pscustomobject]@{ ok = $false; exitCode = -1; blocked = $false; message = $message }
+  }
+}
+
+function Ensure-LocalManagedRuntime {
+  param([switch]$Quiet)
+
+  try {
+    if (-not $Quiet) {
+      Show-Header -RightText 'Local runtime'
+      Write-Host '  Preparing the stable managed Windows Coding Agent runtime...'
+      Write-Host ''
+    }
+    $installed = Install-WcaManagedVersion -SourceRoot $script:RepoRoot
+    $script:BootstrapPath = Get-WcaStableMcpBootstrapPath
+    if (-not (Test-Path -LiteralPath $script:BootstrapPath -PathType Leaf)) {
+      throw "Stable MCP bootstrap was not created: $script:BootstrapPath"
+    }
+    if (-not $Quiet) {
+      Write-Status 'Managed version' ('[OK] v' + [string]$installed.version)
+      Write-Status 'Stable MCP bootstrap' '[OK]'
+    }
+    return $installed
+  } catch {
+    if (-not $Quiet) {
+      Write-Host ('  [X] Managed runtime preparation failed: {0}' -f $_.Exception.Message) -ForegroundColor Red
+    }
+    return $null
+  }
+}
+
+function Ensure-TunnelProfileCurrent {
+  param($State, [string]$ClientPath)
+
+  $mcpCommand = Get-McpCommand -ServerPath $script:BootstrapPath
+  $needsRepair = (-not $State.profileConfigured) -or ([string]$State.mcpCommand -ne $mcpCommand)
+  if (-not $needsRepair) { return $true }
+
+  Show-Header -RightText 'Self-heal'
+  Write-Host '  Tunnel profile is missing or points at an older installation.'
+  Write-Host '  Rebuilding it against the stable MCP bootstrap...'
+  Write-Host ''
+  $arguments = @('init','--force','--sample','sample_mcp_stdio_local','--profile',$State.profileName,'--tunnel-id',$State.tunnelId,'--mcp-command',$mcpCommand)
+  $result = Invoke-TunnelNative -ClientPath $ClientPath -Arguments $arguments
+  if (-not $result.ok) { return $false }
+
+  $State.mcpCommand = $mcpCommand
+  $State.managedVersion = $script:CurrentVersion
+  $State.profileConfigured = $true
+  Save-ConnectionState -State $State
+  Write-Host '  [OK] Tunnel profile repaired.' -ForegroundColor Green
+  return $true
+}
+
 function Invoke-TunnelDoctor {
   param($State, [string]$ClientPath)
 
   Show-Header -RightText 'Connection check'
   Write-Host '  Checking OpenAI tunnel and local MCP configuration...'
   Write-Host ''
-  & $ClientPath doctor --profile $State.profileName --explain
-  if ($LASTEXITCODE -ne 0) {
-    Write-Host ''
-    Write-Host '  [X] Tunnel diagnostic failed.' -ForegroundColor Red
-    Write-Host ''
-    Write-Host '  Common causes:'
-    Write-Host '    - runtime key is incorrect'
-    Write-Host '    - Tunnels Read or Use permission is missing'
-    Write-Host '    - tunnel belongs to another workspace'
-    Write-Host '    - local MCP command cannot start'
+  $result = Invoke-TunnelNative -ClientPath $ClientPath -Arguments @('doctor','--profile',$State.profileName,'--explain')
+  if (-not $result.ok) {
+    if (-not $result.blocked) {
+      Write-Host ''
+      Write-Host '  [X] Tunnel diagnostic failed.' -ForegroundColor Red
+      Write-Host ''
+      Write-Host '  Common causes:'
+      Write-Host '    - runtime key is incorrect'
+      Write-Host '    - Tunnels Read or Use permission is missing'
+      Write-Host '    - tunnel belongs to another workspace'
+      Write-Host '    - local MCP command cannot start'
+    }
     return $false
   }
 
   $State.profileConfigured = $true
+  $State.mcpCommand = Get-McpCommand -ServerPath $script:BootstrapPath
+  $State.managedVersion = $script:CurrentVersion
   $State.lastDoctorOk = (Get-Date).ToUniversalTime().ToString('o')
   Save-ConnectionState -State $State
   Write-Host ''
@@ -464,7 +564,6 @@ function Invoke-TunnelDoctor {
   Write-Host '  +--------------------+'
   return $true
 }
-
 function Get-McpCommand {
   param([string]$ServerPath)
 
@@ -485,32 +584,40 @@ function Get-McpCommand {
 function Configure-TunnelProfile {
   param($State, [string]$ClientPath, [string]$NodePath)
 
-  if (-not (Test-ProfileName $State.profileName)) {
-    throw 'Invalid tunnel profile name.'
+  if (-not (Test-ProfileName $State.profileName)) { throw 'Invalid tunnel profile name.' }
+  if (-not (Test-Path -LiteralPath $script:BootstrapPath -PathType Leaf)) {
+    $managed = Ensure-LocalManagedRuntime
+    if (-not $managed) { return $false }
   }
-  $mcpCommand = Get-McpCommand -ServerPath $script:ServerPath
 
+  $mcpCommand = Get-McpCommand -ServerPath $script:BootstrapPath
   Show-Header -RightText 'Setup  5 / 6'
   Write-Host '  [>>] CONFIGURE LOCAL BRIDGE'
   Write-Host ''
   Write-Status 'Profile' $State.profileName
   Write-Status 'Tunnel' $State.tunnelId
-  Write-Status 'MCP server' $script:ServerPath
+  Write-Status 'Stable MCP bootstrap' $script:BootstrapPath
   Write-Host ''
   Write-Host '  Configuring the Secure MCP Tunnel profile...'
   Write-Host ''
 
-  & $ClientPath init --force --sample sample_mcp_stdio_local --profile $State.profileName --tunnel-id $State.tunnelId --mcp-command $mcpCommand
-  if ($LASTEXITCODE -ne 0) {
-    Write-Host "  [X] tunnel-client init failed with exit code $LASTEXITCODE." -ForegroundColor Red
-    Write-Host '  [!] This failed while building the local MCP profile.' -ForegroundColor Yellow
-    Write-Host '      Re-entering the API key will not fix an MCP command preflight error.'
+  $arguments = @('init','--force','--sample','sample_mcp_stdio_local','--profile',$State.profileName,'--tunnel-id',$State.tunnelId,'--mcp-command',$mcpCommand)
+  $result = Invoke-TunnelNative -ClientPath $ClientPath -Arguments $arguments
+  if (-not $result.ok) {
+    if (-not $result.blocked) {
+      Write-Host ('  [X] tunnel-client init failed with exit code {0}.' -f $result.exitCode) -ForegroundColor Red
+      Write-Host '  [!] This failed while building the local MCP profile.' -ForegroundColor Yellow
+      Write-Host '      Re-entering the API key will not fix an MCP command preflight error.'
+    }
     return $false
   }
 
+  $State.mcpCommand = $mcpCommand
+  $State.managedVersion = $script:CurrentVersion
+  $State.profileConfigured = $true
+  Save-ConnectionState -State $State
   return (Invoke-TunnelDoctor -State $State -ClientPath $ClientPath)
 }
-
 function Show-ChatGPTSteps {
   param([string]$ResolvedTunnelId = '')
 
@@ -570,26 +677,47 @@ function Invoke-ChatGPTSetupStep {
 function Test-LocalPrerequisites {
   param([switch]$Interactive)
 
+  Refresh-WcaProcessPath
+  $toolchain = Refresh-WcaToolchain
   $node = Get-NodePath
+  $npm = Get-NpmPath
+  $npx = Get-NpxPath
   $git = Get-GitPath
+  $nodeSupported = $node -and (Test-WcaNodeSupported ([string]$toolchain.tools.node.version))
   $repoCount = Get-RepositoryCount
 
   Show-Header -RightText 'Setup  1 / 6'
   Write-Host '  LOCAL READINESS'
   Write-Host ''
-  Write-Status 'Node.js' $(if ($node) { '[OK]' } else { '[X]' })
+  Write-Status 'Node.js 20+' $(if ($nodeSupported) { '[OK] ' + [string]$toolchain.tools.node.version } else { '[X]' })
+  Write-Status 'npm' $(if ($npm) { '[OK]' } else { '[X]' })
+  Write-Status 'npx' $(if ($npx) { '[OK]' } else { '[X]' })
   Write-Status 'Git' $(if ($git) { '[OK]' } else { '[X]' })
   Write-Status 'Authorized repositories' $(if ($repoCount -gt 0) { "[OK] $repoCount" } else { '[--] none' })
   Write-Host ''
 
-  if ($node -and $git -and $repoCount -gt 0) {
-    Write-Host '  [OK] Local coding agent is ready.' -ForegroundColor Green
+  if ($nodeSupported -and $npm -and $npx -and $git -and $repoCount -gt 0) {
+    Write-Host '  [OK] Local coding agent prerequisites are ready.' -ForegroundColor Green
     if ($Interactive) { Read-Host '  Press Enter to continue' | Out-Null }
     return $true
   }
 
-  if (-not $node) { Write-Host '  [X] Install Node.js 20 or newer before continuing.' -ForegroundColor Red }
-  if (-not $git) { Write-Host '  [X] Install Git for Windows before continuing.' -ForegroundColor Red }
+  if (-not $nodeSupported -or -not $npm -or -not $npx -or -not $git) {
+    Write-Host '  [!] One or more required development tools are missing or outdated.' -ForegroundColor Yellow
+    if ($Interactive -and (Test-Path -LiteralPath $script:DependencyInstaller -PathType Leaf)) {
+      Write-Host ''
+      Write-Host '     [I] Install / repair required dependencies'
+      Write-Host '     [B] Back'
+      $dependencyChoice = Read-Choice '  Select' @('I','B')
+      if ($dependencyChoice -eq 'I') {
+        $powershell = Resolve-WcaToolPath -Name powershell
+        & $powershell -NoProfile -ExecutionPolicy Bypass -File $script:DependencyInstaller -RequiredOnly
+        if ($LASTEXITCODE -eq 0) { return (Test-LocalPrerequisites -Interactive:$false) }
+      }
+      return $false
+    }
+  }
+
   if ($repoCount -eq 0) {
     Write-Host '  [!] No local Git repositories are authorized yet.' -ForegroundColor Yellow
     if ($Interactive -and (Test-Path -LiteralPath $script:SetupCmd -PathType Leaf)) {
@@ -605,25 +733,30 @@ function Test-LocalPrerequisites {
   }
   return $false
 }
-
 function Invoke-GuidedSetup {
   param($State)
 
-  if (-not (Test-Path -LiteralPath $script:ServerPath -PathType Leaf)) {
-    throw "Windows Coding Agent MCP entrypoint not found: $script:ServerPath"
+  if (-not (Test-Path -LiteralPath (Join-Path $script:RepoRoot 'src\index.js') -PathType Leaf)) {
+    throw "Windows Coding Agent MCP entrypoint not found under: $script:RepoRoot"
   }
   if (-not (Test-LocalPrerequisites -Interactive)) {
     Read-Host '  Press Enter to return to the menu' | Out-Null
     return
   }
 
+  $managed = Ensure-LocalManagedRuntime
+  if (-not $managed) {
+    Read-Host '  Press Enter to return to the menu' | Out-Null
+    return
+  }
+  $State.managedVersion = [string]$managed.version
+  Save-ConnectionState -State $State
+
   $nodePath = Get-NodePath
   $clientPath = Select-TunnelClient -State $State -StepNumber 2
   if (-not $clientPath) { return }
-
   $resolvedTunnelId = Get-TunnelIdStep -State $State
   if (-not $resolvedTunnelId) { return }
-
   if (-not (Read-RuntimeApiKey)) { return }
 
   $bridgeReady = Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath
@@ -634,20 +767,18 @@ function Invoke-GuidedSetup {
     Write-Host '     [1] Retry local bridge configuration'
     Write-Host '     [2] Re-enter runtime API key, then retry'
     Write-Host '     [3] Open API Keys page'
+    Write-Host '     [4] Dependency / toolchain diagnostics'
     Write-Host '     [B] Return to menu'
-    $choice = Read-Choice '  Select' @('1','2','3','B')
-    if ($choice -eq '1') {
-      $bridgeReady = Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath
-      continue
-    }
+    $choice = Read-Choice '  Select' @('1','2','3','4','B')
+    if ($choice -eq '1') { $bridgeReady = Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath; continue }
     if ($choice -eq '2') {
-      if (Read-RuntimeApiKey -ForcePrompt) {
-        $bridgeReady = Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath
-      }
+      if (Read-RuntimeApiKey -ForcePrompt) { $bridgeReady = Configure-TunnelProfile -State $State -ClientPath $clientPath -NodePath $nodePath }
       continue
     }
-    if ($choice -eq '3') {
-      Open-SetupPage $script:ApiKeysUrl | Out-Null
+    if ($choice -eq '3') { Open-SetupPage $script:ApiKeysUrl | Out-Null; continue }
+    if ($choice -eq '4') {
+      $powershell = Resolve-WcaToolPath -Name powershell
+      & $powershell -NoProfile -ExecutionPolicy Bypass -File $script:DependencyInstaller -ForChatGPT
       continue
     }
     return
@@ -670,8 +801,13 @@ function Invoke-GuidedSetup {
   Write-Host '                            |'
   Write-Host '                            v'
   Write-Host '                  +-------------------+'
-  Write-Host '                  | Windows Coding    |'
-  Write-Host '                  | Agent             |'
+  Write-Host '                  | Stable Bootstrap  |'
+  Write-Host '                  +-------------------+'
+  Write-Host '                            |'
+  Write-Host '                            v'
+  Write-Host '                  +-------------------+'
+  Write-Host '                  | Active Agent      |'
+  Write-Host '                  | Managed Version   |'
   Write-Host '                  +-------------------+'
   Write-Host '                            |'
   Write-Host '                            v'
@@ -680,8 +816,10 @@ function Invoke-GuidedSetup {
   Write-Host '                  | Repositories      |'
   Write-Host '                  +-------------------+'
   Write-Host ''
+  Write-Host ('  Stable launcher: {0}' -f (Get-WcaStableLauncherPath))
+  Write-Host ''
   if ($ConfigureOnly) {
-    Write-Host '  Configuration is saved. Run Connect-ChatGPT.cmd when you want to start the bridge.'
+    Write-Host '  Configuration is saved. Use the stable launcher when you want to start the bridge.'
     Read-Host '  Press Enter to return to the menu' | Out-Null
     return
   }
@@ -693,7 +831,6 @@ function Invoke-GuidedSetup {
   if ($choice -eq '1') { Start-ChatGPTBridge -State $State }
   if ($choice -eq '2') { Open-SetupPage 'https://chatgpt.com/' | Out-Null }
 }
-
 function Start-ChatGPTBridge {
   param($State)
 
@@ -705,7 +842,20 @@ function Start-ChatGPTBridge {
     return
   }
 
+  $managed = Ensure-LocalManagedRuntime -Quiet
+  if (-not $managed) {
+    Show-Header -RightText 'Self-heal'
+    Write-Host '  [X] The managed runtime could not be repaired automatically.' -ForegroundColor Red
+    Write-Host '      Run Maintenance -> Repair local runtime.'
+    Read-Host '  Press Enter to return to the menu' | Out-Null
+    return
+  }
+
   if (-not (Read-RuntimeApiKey)) { return }
+  if (-not (Ensure-TunnelProfileCurrent -State $State -ClientPath $clientPath)) {
+    Read-Host '  Press Enter to return to the menu' | Out-Null
+    return
+  }
   if (-not (Invoke-TunnelDoctor -State $State -ClientPath $clientPath)) {
     Read-Host '  Press Enter to return to the menu' | Out-Null
     return
@@ -716,70 +866,69 @@ function Start-ChatGPTBridge {
   Write-Host ''
   Write-Status 'Tunnel' $State.tunnelId
   Write-Status 'Profile' $State.profileName
+  Write-Status 'Active agent' ('v' + [string]$managed.version)
+  Write-Status 'Stable bootstrap' '[OK]'
   Write-Status 'Repository access' "[OK] $(Get-RepositoryCount) authorized"
   Write-Host ''
   Write-Host '  Keep this window open while ChatGPT uses your local repositories.'
   Write-Host '  Press Ctrl+C to stop the bridge and return to the terminal.'
   Write-Host ''
   $open = Read-Host '  Open ChatGPT before starting? [Y/n]'
-  if ([string]::IsNullOrWhiteSpace($open) -or $open -match '^[Yy]') {
-    Open-SetupPage 'https://chatgpt.com/' | Out-Null
-  }
+  if ([string]::IsNullOrWhiteSpace($open) -or $open -match '^[Yy]') { Open-SetupPage 'https://chatgpt.com/' | Out-Null }
   Write-Host ''
   Write-Host '  Starting Secure MCP Tunnel...' -ForegroundColor Green
   Write-Host ''
-  & $clientPath run --profile $State.profileName
-  $exitCode = $LASTEXITCODE
+  $result = Invoke-TunnelNative -ClientPath $clientPath -Arguments @('run','--profile',$State.profileName)
   Write-Host ''
-  if ($exitCode -eq 0) {
-    Write-Host '  [OK] ChatGPT bridge stopped.'
-  } else {
-    Write-Host "  [X] ChatGPT bridge exited with code $exitCode." -ForegroundColor Red
-  }
+  if ($result.ok -and $result.exitCode -eq 0) { Write-Host '  [OK] ChatGPT bridge stopped.' }
+  elseif (-not $result.blocked) { Write-Host ('  [X] ChatGPT bridge exited with code {0}.' -f $result.exitCode) -ForegroundColor Red }
   Read-Host '  Press Enter to return to the menu' | Out-Null
 }
-
 function Invoke-Diagnostics {
   param($State)
 
   Show-Header -RightText 'Diagnostics'
-  $nodePath = Get-NodePath
-  $gitPath = Get-GitPath
+  $toolchain = Refresh-WcaToolchain -TunnelClientHint ([string]$State.tunnelClientPath)
   $repoCount = Get-RepositoryCount
   $clientPath = Get-ExistingTunnelClientPath -State $State
+  $active = Get-WcaActiveInstallation
 
-  Write-Status 'Node.js' $(if ($nodePath) { '[OK]' } else { '[X]' })
-  Write-Status 'Git' $(if ($gitPath) { '[OK]' } else { '[X]' })
+  Write-Status 'Node.js' $(if ($toolchain.tools.node.status -eq 'ok') { '[OK] ' + [string]$toolchain.tools.node.version } else { '[X]' })
+  Write-Status 'npm' $(if ($toolchain.tools.npm.status -eq 'ok') { '[OK] ' + [string]$toolchain.tools.npm.version } else { '[X]' })
+  Write-Status 'npx' $(if ($toolchain.tools.npx.status -eq 'ok') { '[OK] ' + [string]$toolchain.tools.npx.version } else { '[X]' })
+  Write-Status 'Git' $(if ($toolchain.tools.git.status -eq 'ok') { '[OK] ' + [string]$toolchain.tools.git.version } else { '[X]' })
   Write-Status 'Repository registry' $(if ($repoCount -gt 0) { "[OK] $repoCount authorized" } else { '[--] none' })
-  Write-Status 'Tunnel client' $(if ($clientPath) { '[OK]' } else { '[--] not found' })
+  Write-Status 'Managed agent' $(if ($active -and (Test-WcaManagedRoot ([string]$active.path))) { '[OK] v' + [string]$active.activeVersion } else { '[--] not installed' })
+  Write-Status 'Stable bootstrap' $(if (Test-Path -LiteralPath (Get-WcaStableMcpBootstrapPath) -PathType Leaf) { '[OK]' } else { '[X]' })
+  Write-Status 'Tunnel client' $(if ($clientPath) { if ($toolchain.tools.tunnelClient.status -eq 'blocked') { '[X] blocked by Windows' } else { '[OK]' } } else { '[--] not found' })
   Write-Status 'Tunnel ID' $(if (Test-TunnelId $State.tunnelId) { '[OK]' } else { '[--] not configured' })
   Write-Status 'ChatGPT app step' $(if ($State.chatgptConfigured) { '[OK]' } else { '[--] not confirmed' })
   Write-Host ''
 
-  if ($nodePath -and (Test-Path -LiteralPath (Join-Path $script:RepoRoot 'src\doctor.js') -PathType Leaf)) {
-    Write-Rule
-    Write-Host '  Running local Windows Coding Agent doctor...'
-    Write-Host ''
-    & $nodePath (Join-Path $script:RepoRoot 'src\doctor.js')
+  if ($toolchain.tools.tunnelClient.status -eq 'blocked') {
+    Show-WcaApplicationControlHelp -Path ([string]$toolchain.tools.tunnelClient.path) -Message ([string]$toolchain.tools.tunnelClient.error)
   }
 
   if ($clientPath -and (Test-TunnelId $State.tunnelId)) {
     Write-Host ''
     Write-Host '     [F] Run full tunnel diagnostic'
+    Write-Host '     [R] Repair local runtime / tunnel profile'
     Write-Host '     [O] Open ChatGPT connection settings'
     Write-Host '     [B] Back'
     Write-Host ''
-    $choice = Read-Choice '  Select' @('F','O','B')
+    $choice = Read-Choice '  Select' @('F','R','O','B')
     if ($choice -eq 'F') {
-      if (Read-RuntimeApiKey) { Invoke-TunnelDoctor -State $State -ClientPath $clientPath | Out-Null }
+      if (Read-RuntimeApiKey) {
+        if (Ensure-TunnelProfileCurrent -State $State -ClientPath $clientPath) { Invoke-TunnelDoctor -State $State -ClientPath $clientPath | Out-Null }
+      }
       Read-Host '  Press Enter to continue' | Out-Null
     }
+    if ($choice -eq 'R') { Invoke-SelfHeal -State $State }
     if ($choice -eq 'O') { Open-SetupPage $script:ChatGPTUrl | Out-Null }
   } else {
     Read-Host '  Press Enter to return to the menu' | Out-Null
   }
 }
-
 function Invoke-CredentialMenu {
   param($State)
 
@@ -847,6 +996,87 @@ function Invoke-CredentialMenu {
     Read-Host '  Press Enter to continue' | Out-Null
   }
 }
+
+function Invoke-SelfHeal {
+  param($State)
+
+  Show-Header -RightText 'Self-heal'
+  Write-Host '  Refreshing tool paths and repairing the stable runtime...'
+  Write-Host ''
+  try {
+    Refresh-WcaProcessPath
+    $managed = Install-WcaManagedVersion -SourceRoot $script:RepoRoot
+    $toolchain = Refresh-WcaToolchain -TunnelClientHint ([string]$State.tunnelClientPath)
+    $script:BootstrapPath = Get-WcaStableMcpBootstrapPath
+    Write-Status 'Managed agent' ('[OK] v' + [string]$managed.version)
+    Write-Status 'Stable MCP bootstrap' $(if (Test-Path -LiteralPath $script:BootstrapPath -PathType Leaf) { '[OK]' } else { '[X]' })
+    Write-Status 'Node.js' $(if ($toolchain.tools.node.status -eq 'ok') { '[OK]' } else { '[X]' })
+    Write-Status 'npm' $(if ($toolchain.tools.npm.status -eq 'ok') { '[OK]' } else { '[X]' })
+    Write-Status 'Git' $(if ($toolchain.tools.git.status -eq 'ok') { '[OK]' } else { '[X]' })
+
+    $clientPath = Get-ExistingTunnelClientPath -State $State
+    if ($clientPath -and (Test-TunnelId $State.tunnelId) -and (Test-SavedRuntimeCredential)) {
+      if (Read-RuntimeApiKey) { Ensure-TunnelProfileCurrent -State $State -ClientPath $clientPath | Out-Null }
+    }
+    Write-Host ''
+    Write-Host '  [OK] Local self-heal pass completed.' -ForegroundColor Green
+  } catch {
+    Write-Host ('  [X] Self-heal failed: {0}' -f $_.Exception.Message) -ForegroundColor Red
+  }
+  Read-Host '  Press Enter to continue' | Out-Null
+}
+
+function Invoke-MaintenanceMenu {
+  param($State)
+
+  while ($true) {
+    Show-Header -RightText 'Maintenance'
+    $active = Get-WcaActiveInstallation
+    Write-Status 'Active agent' $(if ($active) { '[OK] v' + [string]$active.activeVersion } else { '[--] not managed' })
+    Write-Status 'Toolchain registry' $(if (Test-Path -LiteralPath (Get-WcaToolchainPath) -PathType Leaf) { '[OK]' } else { '[--] not scanned' })
+    Write-Host ''
+    Write-Host '     [1] Scan / install dependencies'
+    Write-Host '     [2] Self-heal paths, bootstrap, and tunnel profile'
+    Write-Host '     [3] Check for / install Windows Coding Agent update'
+    Write-Host '     [4] Roll back to last-known-good agent version'
+    Write-Host '     [5] Show stable launcher directory'
+    Write-Host '     [B] Back'
+    Write-Host ''
+    $choice = Read-Choice '  Select' @('1','2','3','4','5','B')
+    if ($choice -eq 'B') { return }
+
+    $powershell = Resolve-WcaToolPath -Name powershell
+    if ($choice -eq '1') {
+      & $powershell -NoProfile -ExecutionPolicy Bypass -File $script:DependencyInstaller -ForChatGPT
+      Refresh-WcaToolchain -TunnelClientHint ([string]$State.tunnelClientPath) | Out-Null
+      continue
+    }
+    if ($choice -eq '2') { Invoke-SelfHeal -State $State; continue }
+    if ($choice -eq '3') {
+      & $powershell -NoProfile -ExecutionPolicy Bypass -File $script:Updater
+      Read-Host '  Press Enter to continue' | Out-Null
+      continue
+    }
+    if ($choice -eq '4') {
+      try {
+        $rolled = Invoke-WcaRollback
+        Write-Host ''
+        Write-Host ('  [OK] Active version is now v{0}' -f $rolled.activeVersion) -ForegroundColor Green
+      } catch {
+        Write-Host ''
+        Write-Host ('  [X] Rollback unavailable: {0}' -f $_.Exception.Message) -ForegroundColor Red
+      }
+      Read-Host '  Press Enter to continue' | Out-Null
+      continue
+    }
+    if ($choice -eq '5') {
+      Write-Host ''
+      Write-Host ('  Stable launchers: {0}' -f (Split-Path -Parent (Get-WcaStableLauncherPath)))
+      Read-Host '  Press Enter to continue' | Out-Null
+    }
+  }
+}
+
 function Invoke-ReconfigureMenu {
   param($State)
 
@@ -967,11 +1197,14 @@ function Show-MainMenu {
     if (Test-ProfileName $ProfileName) { $state.profileName = $ProfileName }
     $repoCount = Get-RepositoryCount
     $clientPath = Get-ExistingTunnelClientPath -State $state
+    $active = Get-WcaActiveInstallation
 
     Show-Header
     Write-Host '  Connection status'
     Write-Host ''
     Write-Status 'Local repositories' $(if ($repoCount -gt 0) { "[OK] $repoCount authorized" } else { '[--] not configured' })
+    Write-Status 'Active agent' $(if ($active -and (Test-WcaManagedRoot ([string]$active.path))) { '[OK] v' + [string]$active.activeVersion } else { '[--] not managed' })
+    Write-Status 'Stable MCP bootstrap' $(if (Test-Path -LiteralPath (Get-WcaStableMcpBootstrapPath) -PathType Leaf) { '[OK]' } else { '[--] not prepared' })
     Write-Status 'Tunnel client' $(if ($clientPath) { '[OK] found' } else { '[--] not configured' })
     Write-Status 'OpenAI tunnel' $(if (Test-TunnelId $state.tunnelId) { '[OK] configured' } else { '[--] not configured' })
     Write-Status 'Runtime credential' $(if (Test-SavedRuntimeCredential) { '[OK] securely saved' } elseif (-not [string]::IsNullOrWhiteSpace($env:CONTROL_PLANE_API_KEY)) { '[OK] session only' } else { '[--] prompt on start' })
@@ -979,25 +1212,18 @@ function Show-MainMenu {
     Write-Host ''
     Write-Rule
     Write-Host ''
-    if ($state.profileConfigured -and (Test-TunnelId $state.tunnelId) -and $clientPath) {
-      Write-Host '     [1] Start ChatGPT bridge'
-    } else {
-      Write-Host '     [1] Start guided setup'
-    }
+    if ($state.profileConfigured -and (Test-TunnelId $state.tunnelId) -and $clientPath) { Write-Host '     [1] Start ChatGPT bridge' } else { Write-Host '     [1] Start guided setup' }
     Write-Host '     [2] Setup / resume / reconfigure'
     Write-Host '     [3] Diagnostics'
     Write-Host '     [4] Manage repositories'
     Write-Host '     [5] Start fresh setup'
+    Write-Host '     [6] Maintenance / dependencies / updates'
     Write-Host '     [Q] Quit'
     Write-Host ''
-    $choice = Read-Choice '  Select' @('1','2','3','4','5','Q')
+    $choice = Read-Choice '  Select' @('1','2','3','4','5','6','Q')
     if ($choice -eq 'Q') { return }
     if ($choice -eq '1') {
-      if ($state.profileConfigured -and (Test-TunnelId $state.tunnelId) -and $clientPath) {
-        Start-ChatGPTBridge -State $state
-      } else {
-        Invoke-GuidedSetup -State $state
-      }
+      if ($state.profileConfigured -and (Test-TunnelId $state.tunnelId) -and $clientPath) { Start-ChatGPTBridge -State $state } else { Invoke-GuidedSetup -State $state }
       continue
     }
     if ($choice -eq '2') {
@@ -1010,9 +1236,7 @@ function Show-MainMenu {
         $sub = Read-Choice '  Select' @('1','2','B')
         if ($sub -eq '1') { Invoke-GuidedSetup -State $state }
         if ($sub -eq '2') { Invoke-ReconfigureMenu -State $state }
-      } else {
-        Invoke-GuidedSetup -State $state
-      }
+      } else { Invoke-GuidedSetup -State $state }
       continue
     }
     if ($choice -eq '3') { Invoke-Diagnostics -State $state; continue }
@@ -1021,9 +1245,9 @@ function Show-MainMenu {
       continue
     }
     if ($choice -eq '5') { Invoke-FreshSetupMenu; continue }
+    if ($choice -eq '6') { Invoke-MaintenanceMenu -State $state; continue }
   }
 }
-
 if (-not (Test-ProfileName $ProfileName)) {
   throw 'ProfileName may contain only letters, numbers, dot, underscore, and hyphen.'
 }
@@ -1057,7 +1281,8 @@ if ($SelfTest) {
     $roundTrip = $null
     if (Test-Path -LiteralPath $credentialTestRoot) { Remove-Item -LiteralPath $credentialTestRoot -Recurse -Force }
   }
-  Write-Host 'SELFTEST OK - wizard state is secret-free; validators, quote-safe MCP command, and DPAPI credential round-trip passed.'
+  if (-not (Test-WcaApplicationControlMessage 'An Application Control policy has blocked this file')) { throw 'Application Control classifier failed.' }
+  Write-Host 'SELFTEST OK - wizard state is secret-free; validators, stable-bootstrap command, Application Control handling, and DPAPI credential round-trip passed.'
   exit 0
 }
 
@@ -1069,6 +1294,15 @@ if ($ShowInstructions) {
 if ($ResetSetup) {
   Reset-ChatGPTConnection
   Write-Host 'ChatGPT connection wizard state was cleared. Repository authorization was not changed.'
+}
+
+if ($RepairOnly) {
+  $state = Load-ConnectionState
+  $managed = Ensure-LocalManagedRuntime
+  if (-not $managed) { exit 1 }
+  Refresh-WcaToolchain -TunnelClientHint ([string]$state.tunnelClientPath) | Out-Null
+  Write-Host 'Local runtime and toolchain repair completed.'
+  exit 0
 }
 
 Show-MainMenu

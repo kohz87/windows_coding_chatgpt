@@ -23,8 +23,12 @@ export function validateConfig(config) {
     for (const key of ['worktrees', 'runScripts', 'commit', 'publish']) {
       if (typeof permissions[key] !== 'boolean') throw new Error(`Repository '${id}' permission '${key}' must be boolean.`);
     }
-    if (!Array.isArray(repo.allowedNpmScripts) || repo.allowedNpmScripts.some((v) => typeof v !== 'string' || !/^[A-Za-z0-9_.:@/-]+$/.test(v))) {
-      throw new Error(`Repository '${id}' has invalid allowedNpmScripts.`);
+    if (repo.packageManager != null && !['npm', 'pnpm', 'yarn'].includes(repo.packageManager)) {
+      throw new Error(`Repository '${id}' has invalid packageManager.`);
+    }
+    const allowedScripts = repo.allowedPackageScripts ?? repo.allowedNpmScripts;
+    if (!Array.isArray(allowedScripts) || allowedScripts.some((v) => typeof v !== 'string' || !/^[A-Za-z0-9_.:@/-]+$/.test(v))) {
+      throw new Error(`Repository '${id}' has invalid allowed package scripts.`);
     }
   }
   return config;

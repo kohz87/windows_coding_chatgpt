@@ -1,6 +1,6 @@
 {
   "name": "windows-coding-agent",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Security-bounded Windows MCP coding controller for explicitly authorized Git repositories.",
   "type": "module",
   "private": true,
@@ -15,7 +15,9 @@
     "doctor": "node src/doctor.js",
     "test": "node --test",
     "validate": "node src/validate.js",
-    "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1"
+    "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1",
+    "update": "powershell -NoProfile -ExecutionPolicy Bypass -File Update.ps1",
+    "deps": "powershell -NoProfile -ExecutionPolicy Bypass -File Install-Dependencies.ps1"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",

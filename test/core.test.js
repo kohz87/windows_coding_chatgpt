@@ -22,7 +22,8 @@ async function makeRepo() {
   await git(['config', 'user.name', 'WCA Test'], root);
   await git(['config', 'user.email', 'wca-test@local.invalid'], root);
   await writeFile(path.join(root, 'hello.txt'), 'hello\n');
-  await writeFile(path.join(root, 'package.json'), JSON.stringify({ scripts: { test: 'node -e "process.exit(0)"', build: 'node -e "process.exit(0)"' } }, null, 2));
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ packageManager: 'npm@11.0.0', scripts: { test: 'node -e "process.exit(0)"', build: 'node -e "process.exit(0)"' } }, null, 2));
+  await writeFile(path.join(root, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3 }, null, 2));
   await git(['add', '-A'], root);
   await git(['commit', '-m', 'initial'], root);
   return root;
@@ -48,7 +49,7 @@ test('configuration persists repository registry', async () => {
   const config = emptyConfig();
   config.repositories.demo = {
     name: 'Demo', path: path.resolve(home), github: null, defaultBranch: 'main',
-    permissions: { worktrees: true, runScripts: true, commit: true, publish: false }, allowedNpmScripts: [],
+    permissions: { worktrees: true, runScripts: true, commit: true, publish: false }, packageManager: 'npm', allowedPackageScripts: [],
   };
   await saveConfig(config, env);
   assert.deepEqual(await loadConfig(env), config);
@@ -62,7 +63,8 @@ test('authorized local-only repository can create isolated guarded worktree', as
   const config = emptyConfig();
   const repo = await registerRepository(config, 'demo', repoPath, { permissions: { publish: false } });
   assert.equal(repo.defaultBranch, 'main');
-  assert.deepEqual(repo.allowedNpmScripts.sort(), ['build', 'test']);
+  assert.equal(repo.packageManager, 'npm');
+  assert.deepEqual(repo.allowedPackageScripts.sort(), ['build', 'test']);
   assert.equal((await resolveRepository(config, 'demo')).path, canonicalRepoPath);
   const workspace = await createWorktree(config, 'demo', 'edit', null, env);
   const ws = await resolveWorkspace(config, workspace.workspaceId, env);

@@ -6,13 +6,14 @@
       "path": "C:\\Users\\Alice\\Projects\\example-project",
       "github": "alice/example-project",
       "defaultBranch": "main",
+      "packageManager": "npm",
       "permissions": {
         "worktrees": true,
         "runScripts": true,
         "commit": true,
         "publish": false
       },
-      "allowedNpmScripts": ["test", "validate", "build"]
+      "allowedPackageScripts": ["test", "validate", "build"]
     }
   }
 }
