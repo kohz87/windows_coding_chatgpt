@@ -23,6 +23,7 @@ function printRepositories(config) {
     console.log(`  [OK] ${id}`);
     console.log(`       Path    : ${repo.path}`);
     console.log(`       GitHub  : ${repo.github ?? '(local only)'}`);
+    console.log(`       Package : ${repo.packageManager ?? 'npm'}`);
     console.log(`       Publish : ${publish}`);
     console.log('');
   }
