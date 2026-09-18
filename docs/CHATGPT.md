@@ -39,6 +39,16 @@ You need:
 
 Product availability and workspace labels can vary. The wizard opens the current OpenAI setup pages but deliberately does not automate authenticated browser clicks or permission grants.
 
+## Managed runtime and stable bridge
+
+Starting with v0.1.5, the tunnel profile no longer points directly at the folder where a release ZIP was extracted. Setup creates a versioned managed installation under `%USERPROFILE%\.windows-coding-agent\versions\` and a stable MCP bootstrap at `%USERPROFILE%\.windows-coding-agent\bootstrap\mcp-loader.mjs`.
+
+The tunnel always launches that stable bootstrap. The bootstrap reads `active-version.json` and loads the active agent version. This means replacing or deleting an old extracted release directory does not strand the tunnel on a dead `src/index.js` path.
+
+The same user-scoped home stores a non-secret `toolchain.json` cache for Node.js, npm, npx, Git, PowerShell, WinGet, tunnel-client, pnpm, and yarn. If a cached path becomes invalid, the local wizard can rediscover it and repair the cache.
+
+The main wizard's **Maintenance** menu can scan/install dependencies, self-heal the managed runtime and tunnel profile, install a verified update, or roll back to the last-known-good managed version. These remain local human actions and are not exposed as remote MCP self-modification tools.
+
 ## Quick setup
 
 Run:
