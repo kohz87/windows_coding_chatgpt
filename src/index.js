@@ -8,9 +8,9 @@ import { createWorktree, resolveWorkspace } from './workspaces.js';
 import { readWorkspaceFile, writeWorkspaceFile, deleteWorkspaceFile } from './files.js';
 import { securePath } from './security.js';
 import { runGit } from './git.js';
-import { repositoryStatus, repositoryRemoteStatus, runAllowedNpmScript, commitWorkspace, publishWorkspace } from './operations.js';
+import { repositoryStatus, repositoryRemoteStatus, runAllowedPackageScript, runAllowedNpmScript, commitWorkspace, publishWorkspace } from './operations.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.5';
 const text = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value });
 const fail = (error) => ({ isError: true, content: [{ type: 'text', text: error?.message ?? String(error) }] });
 const guarded = (fn) => async (args) => { try { return text(await fn(args)); } catch (error) { return fail(error); } };
@@ -28,7 +28,7 @@ function createServer() {
     inputSchema: z.object({}),
   }, guarded(async () => {
     const config = await loadConfig();
-    return { repositories: Object.entries(config.repositories).map(([id, repo]) => ({ id, name: repo.name, path: repo.path, github: repo.github, defaultBranch: repo.defaultBranch, permissions: repo.permissions, allowedNpmScripts: repo.allowedNpmScripts })) };
+    return { repositories: Object.entries(config.repositories).map(([id, repo]) => ({ id, name: repo.name, path: repo.path, github: repo.github, defaultBranch: repo.defaultBranch, packageManager: repo.packageManager ?? 'npm', permissions: repo.permissions, allowedPackageScripts: repo.allowedPackageScripts ?? repo.allowedNpmScripts ?? [] })) };
   }));
 
   server.registerTool('repository_status', {
@@ -122,8 +122,13 @@ function createServer() {
     return { ok: result.ok, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
   }));
 
+  server.registerTool('run_package_script', {
+    description: 'Run one locally allowlisted package script using the repository package manager detected during local authorization (npm, pnpm, or yarn).',
+    inputSchema: z.object({ workspaceId: z.string(), script: z.string() }),
+  }, guarded(async ({ workspaceId, script }) => runAllowedPackageScript(await loadConfig(), workspaceId, script)));
+
   server.registerTool('run_npm_script', {
-    description: 'Run one repository-defined npm script only when that script was locally allowlisted during setup.',
+    description: 'Backward-compatible alias for run_package_script. The detected repository package manager is used even when it is not npm.',
     inputSchema: z.object({ workspaceId: z.string(), script: z.string() }),
   }, guarded(async ({ workspaceId, script }) => runAllowedNpmScript(await loadConfig(), workspaceId, script)));
 
