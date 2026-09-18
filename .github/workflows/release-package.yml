@@ -10,10 +10,12 @@ on:
       - README.md
       - LICENSE
       - src/**
+      - test/**
       - docs/**
+      - bootstrap/**
       - scripts/package-release.ps1
       - '*.cmd'
-      - Connect-ChatGPT.ps1
+      - '*.ps1'
       - config.example.json
       - .github/workflows/release-package.yml
   workflow_dispatch:
@@ -32,7 +34,7 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Run tests
         run: npm test
@@ -40,12 +42,20 @@ jobs:
       - name: Validate source
         run: npm run validate
 
-      - name: Validate ChatGPT wizard
+      - name: Validate maintenance and ChatGPT wizard
         shell: powershell
         run: |
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path '.\Connect-ChatGPT.ps1'), [ref]$null, [ref]$errors) | Out-Null
-          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          foreach ($script in @('.\Connect-ChatGPT.ps1','.\Toolchain.ps1','.\Install-Dependencies.ps1','.\Update.ps1','.\bootstrap\launch.ps1')) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script), [ref]$null, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error "$script : $($_.Message)" }; exit 1 }
+          }
+          powershell -NoProfile -ExecutionPolicy Bypass -Command ". .\Toolchain.ps1; Invoke-WcaToolchainSelfTest"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Dependencies.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\Update.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -NoProfile -ExecutionPolicy Bypass -File .\Connect-ChatGPT.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -NoProfile -ExecutionPolicy Bypass -File .\Connect-ChatGPT.ps1 -ShowInstructions -TunnelId tunnel_release_test
@@ -90,13 +100,15 @@ jobs:
           @"
           Windows Coding Agent v$env:VERSION
 
-          Download Windows-Coding-Agent-v$env:VERSION.zip, extract it, and run Setup.cmd to authorize a local Git repository.
+          Download Windows-Coding-Agent-v$env:VERSION.zip, extract it, and run Setup.cmd.
 
-          Then run Connect-ChatGPT.cmd. The guided ASCII wizard opens the OpenAI tunnel/API-key/ChatGPT setup pages, validates the local bridge, remembers only non-secret progress, and can resume or safely restart setup later.
+          Setup can install or repair required dependencies and creates a versioned managed installation under the current Windows user's .windows-coding-agent directory. Stable launchers and a stable MCP bootstrap prevent release-folder moves from breaking an existing tunnel profile.
+
+          The ChatGPT wizard can self-heal stale tool paths and tunnel profiles, securely remember the runtime credential, detect Windows Application Control blocks, and provide local dependency/update/rollback maintenance. Updates are downloaded from GitHub releases, SHA-256 verified, tested, and only then activated.
 
           The .sha256 asset contains the SHA-256 checksum for verifying the ZIP.
 
-          This package was built from commit $env:GITHUB_SHA after tests, source validation, and the ChatGPT wizard smoke checks passed on the Windows runner.
+          This package was built from commit $env:GITHUB_SHA after tests, source validation, maintenance self-tests, and ChatGPT wizard smoke checks passed on the Windows runner.
           "@ | Set-Content release-notes.md -Encoding utf8
 
           gh release create $env:TAG $env:ZIP $env:SHA `
