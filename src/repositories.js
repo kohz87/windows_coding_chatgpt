@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { realpath } from 'node:fs/promises';
+import { realpath, readFile, access } from 'node:fs/promises';
 import { inspectGitRepository, githubRemoteMatches, runGit } from './git.js';
 import { validateRepositoryId } from './security.js';
 
@@ -7,7 +7,8 @@ export async function registerRepository(config, id, selectedPath, options = {})
   validateRepositoryId(id);
   const inspected = await inspectGitRepository(path.resolve(selectedPath));
   const canonical = await realpath(inspected.path);
-  const allowedNpmScripts = Array.from(new Set(options.allowedNpmScripts ?? await detectNpmScripts(canonical)));
+  const packageManager = options.packageManager ?? await detectPackageManager(canonical);
+  const allowedPackageScripts = Array.from(new Set(options.allowedPackageScripts ?? options.allowedNpmScripts ?? await detectPackageScripts(canonical)));
   const permissions = {
     worktrees: options.permissions?.worktrees ?? true,
     runScripts: options.permissions?.runScripts ?? true,
@@ -20,7 +21,8 @@ export async function registerRepository(config, id, selectedPath, options = {})
     github: inspected.github,
     defaultBranch: inspected.defaultBranch,
     permissions,
-    allowedNpmScripts,
+    packageManager,
+    allowedPackageScripts,
   };
   return config.repositories[id];
 }
@@ -41,11 +43,23 @@ export async function resolveRepository(config, repositoryId) {
       throw new Error(`Repository '${repositoryId}' origin no longer matches configured GitHub repository '${repo.github}'.`);
     }
   }
-  return { id: repositoryId, ...repo, path: canonical };
+  const allowedPackageScripts = repo.allowedPackageScripts ?? repo.allowedNpmScripts ?? [];
+  return { id: repositoryId, ...repo, packageManager: repo.packageManager ?? 'npm', allowedPackageScripts, path: canonical };
 }
 
-export async function detectNpmScripts(repositoryPath) {
-  const { readFile } = await import('node:fs/promises');
+export async function detectPackageManager(repositoryPath) {
+  try {
+    const pkg = JSON.parse(await readFile(path.join(repositoryPath, 'package.json'), 'utf8'));
+    const declared = typeof pkg.packageManager === 'string' ? pkg.packageManager.split('@')[0].toLowerCase() : '';
+    if (['npm', 'pnpm', 'yarn'].includes(declared)) return declared;
+  } catch {}
+  for (const [file, manager] of [['pnpm-lock.yaml', 'pnpm'], ['yarn.lock', 'yarn'], ['package-lock.json', 'npm'], ['npm-shrinkwrap.json', 'npm']]) {
+    try { await access(path.join(repositoryPath, file)); return manager; } catch {}
+  }
+  return 'npm';
+}
+
+export async function detectPackageScripts(repositoryPath) {
   try {
     const pkg = JSON.parse(await readFile(path.join(repositoryPath, 'package.json'), 'utf8'));
     const preferred = ['test', 'validate', 'build', 'lint', 'package', 'typecheck', 'check'];
@@ -54,3 +68,5 @@ export async function detectNpmScripts(repositoryPath) {
     return [];
   }
 }
+
+export const detectNpmScripts = detectPackageScripts;
