@@ -2,18 +2,13 @@
 
 ## 1. Install prerequisites
 
-Install:
+Windows 10 or Windows 11 is required. You do not need to preinstall every development dependency manually.
 
-- Windows 10/11
-- Node.js 20+
-- Git for Windows
+Run `Setup.cmd`. It checks Node.js 20+, npm, npx, and Git. If Node.js/npm/npx or Git are missing, the dependency wizard can offer to install or repair Node.js LTS and Git with WinGet after your confirmation. npm and npx are verified separately but are normally supplied by the Node.js installation.
 
-Confirm from Command Prompt:
+For ChatGPT, the wizard can also install the official OpenAI `tunnel-client.exe` into the user-scoped Windows Coding Agent tools directory. Automatic installation downloads only from the official OpenAI GitHub release and requires a verifiable SHA-256 digest before the executable is installed. Windows Application Control, WDAC, AppLocker, and Smart App Control are not bypassed.
 
-```text
-node --version
-git --version
-```
+pnpm and yarn are optional. They are offered only when requested or when a repository needs that package manager.
 
 ## 2. Get Windows Coding Agent
 
@@ -129,6 +124,16 @@ node C:\path\to\windows_coding_chatgpt\src\index.js
 For Codex, see `docs/CODEX.md`.
 
 For ChatGPT, see `docs/CHATGPT.md`.
+
+## Managed installation
+
+Setup creates a versioned managed installation under:
+
+```text
+%USERPROFILE%\.windows-coding-agent\versions\vX.Y.Z\
+```
+
+Stable launchers are created under `%USERPROFILE%\.windows-coding-agent\bin\`, and the MCP tunnel points at the stable bootstrap under `bootstrap\mcp-loader.mjs`. After the initial v0.1.5 setup, prefer the stable launchers rather than keeping a particular extracted release folder as the permanent runtime.
 
 ## Updating
 
