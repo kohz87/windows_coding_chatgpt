@@ -15,7 +15,10 @@ The important boundary is simple: **the human chooses repository directories loc
 - Isolated writable `work/*` Git worktrees
 - SHA-256 guarded file replacement/deletion
 - Path traversal, absolute-path, `.git`, Windows device-name, ADS, and worktree escape protection
-- Per-repository npm script allowlists
+- Per-repository package-manager detection (npm, pnpm, or yarn) with locally allowlisted scripts
+- User-scoped toolchain registry for Node.js, npm, npx, Git, PowerShell, WinGet, tunnel-client, pnpm, and yarn
+- Optional guided dependency installation and repair
+- Versioned managed installation with stable MCP bootstrap, self-heal, verified updates, and rollback
 - Guarded local commits
 - Optional fast-forward-only publication to the configured GitHub repository
 - MCP stdio server for Codex and local MCP clients
@@ -37,9 +40,9 @@ Extract the ZIP and double-click `Setup.cmd`.
 Required:
 
 - Windows 10 or Windows 11
-- Node.js 20 or newer
-- Git for Windows
 - at least one local Git repository
+
+`Setup.cmd` checks for Node.js 20+, npm, npx, and Git. If a required tool is missing it can offer to install or repair Node.js LTS and Git through WinGet. npm and npx are treated as part of the Node.js runtime family and are verified separately.
 
 For ChatGPT access:
 
@@ -67,7 +70,7 @@ Enter a Git repository such as:
 C:\Users\Alice\Projects\my-app
 ```
 
-The setup verifies the Git root, detects the GitHub `origin` when present, detects common npm scripts, and asks whether guarded publication should be enabled.
+The setup first checks required dependencies, creates a versioned managed Windows Coding Agent installation under your user profile, then verifies the Git root, detects the GitHub `origin` when present, detects the repository package manager and common scripts, and asks whether guarded publication should be enabled.
 
 ### 2. Run the ChatGPT wizard
 
@@ -88,6 +91,8 @@ The launcher becomes the setup control panel:
   Connection status
 
   Local repositories                     [OK] 1 authorized
+  Active agent                            [OK] v0.1.5
+  Stable MCP bootstrap                    [OK]
   Tunnel client                           [--] not configured
   OpenAI tunnel                           [--] not configured
   ChatGPT app                             [--] not confirmed
@@ -99,6 +104,7 @@ The launcher becomes the setup control panel:
      [3] Diagnostics
      [4] Manage repositories
      [5] Start fresh setup
+     [6] Maintenance / dependencies / updates
      [Q] Quit
 ```
 
@@ -106,11 +112,11 @@ For first-time setup, choose `[1]`.
 
 The six-step wizard:
 
-1. checks Node.js, Git, and local repository authorization
-2. finds `tunnel-client.exe` or opens the official download page
+1. checks Node.js 20+, npm, npx, Git, and local repository authorization, with an install/repair option for missing required tools
+2. finds `tunnel-client.exe`, can install the verified official OpenAI release into the user-scoped tool directory, or opens the official download page
 3. opens the OpenAI Tunnels page and asks for the `tunnel_...` ID
 4. opens Runtime API Keys and asks for a restricted **Tunnels Read + Use** key using a hidden prompt
-5. creates the local stdio tunnel profile and runs `tunnel-client doctor --explain`
+5. creates the local stdio tunnel profile against a stable user-scoped MCP bootstrap and runs `tunnel-client doctor --explain`
 6. opens ChatGPT connection settings and shows the exact custom MCP app values to select
 
 The authenticated browser pages remain explicit user actions. The script does not attempt to click through your OpenAI account or silently grant permissions.
@@ -156,14 +162,49 @@ ChatGPT
    -> custom MCP app
    -> OpenAI Secure MCP Tunnel
    -> tunnel-client.exe on your PC
-   -> Windows Coding Agent MCP over local stdio
+   -> stable ~/.windows-coding-agent/bootstrap/mcp-loader.mjs
+   -> active managed Windows Coding Agent version
    -> authorized repository
    -> isolated worktree
    -> tests / guarded commit
    -> optional guarded GitHub publication
 ```
 
+The tunnel profile no longer depends on the directory where a release ZIP was extracted. Moving or deleting an old v0.1.x folder therefore does not leave the tunnel pointing at a dead `src/index.js` path.
+
 See [docs/CHATGPT.md](docs/CHATGPT.md) for the detailed walkthrough, resume/reconfigure behavior, safe reset modes, and troubleshooting.
+
+## Managed installation, self-heal, and updates
+
+v0.1.5 introduces a stable user-scoped runtime:
+
+```text
+%USERPROFILE%\.windows-coding-agent\
+  active-version.json
+  toolchain.json
+  bootstrap\
+    mcp-loader.mjs
+    launch.ps1
+  bin\
+    Connect-ChatGPT.cmd
+    Start-Agent.cmd
+    Setup.cmd
+    Doctor.cmd
+    Update.cmd
+    Install-Dependencies.cmd
+  versions\
+    v0.1.5\
+  tools\
+    tunnel-client\
+  secrets\
+  worktrees\
+```
+
+The release ZIP becomes an installer/source bundle rather than the permanent MCP target. Stable launchers dispatch to the active managed version. On startup the ChatGPT wizard can rediscover stale tool paths and repair a tunnel profile that still references an older extracted release.
+
+Maintenance is local and human-controlled. From menu option `[6]` you can scan/install dependencies, run self-heal, check/install an update, roll back to the last-known-good managed version, or show the stable launcher directory.
+
+Updates are downloaded from this repository's GitHub release assets, SHA-256 verified, staged, installed with `npm ci --ignore-scripts`, tested and validated before activation. A failed candidate does not replace the active version. There is deliberately no remote MCP tool that lets ChatGPT replace its own security controller.
 
 ## Resume, reconfigure, or start fresh
 
@@ -243,13 +284,14 @@ A registration contains local policy such as:
       "path": "C:\\Users\\Alice\\Projects\\my-app",
       "github": "alice/my-app",
       "defaultBranch": "main",
+      "packageManager": "npm",
       "permissions": {
         "worktrees": true,
         "runScripts": true,
         "commit": true,
         "publish": false
       },
-      "allowedNpmScripts": ["test", "build"]
+      "allowedPackageScripts": ["test", "build"]
     }
   }
 }
