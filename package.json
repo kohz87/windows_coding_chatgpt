@@ -16,8 +16,8 @@
     "test": "node --test",
     "validate": "node src/validate.js",
     "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1",
-    "dependencies": "powershell -NoProfile -ExecutionPolicy Bypass -File Install-Dependencies.ps1",
-    "update": "powershell -NoProfile -ExecutionPolicy Bypass -File Update.ps1"
+    "update": "powershell -NoProfile -ExecutionPolicy Bypass -File Update.ps1",
+    "deps": "powershell -NoProfile -ExecutionPolicy Bypass -File Install-Dependencies.ps1"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
