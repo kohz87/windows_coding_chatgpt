@@ -181,9 +181,21 @@ function Get-WcaToolVersion {
 function Refresh-WcaProcessPath {
   $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
   $user = [Environment]::GetEnvironmentVariable('Path', 'User')
-  $parts = @()
-  if (-not [string]::IsNullOrWhiteSpace($machine)) { $parts += $machine }
-  if (-not [string]::IsNullOrWhiteSpace($user)) { $parts += $user }
+  $current = $env:Path
+  $seen = @{}
+  $parts = New-Object System.Collections.Generic.List[string]
+  foreach ($source in @($machine, $user, $current)) {
+    if ([string]::IsNullOrWhiteSpace($source)) { continue }
+    foreach ($part in ($source -split ';')) {
+      $trimmed = $part.Trim()
+      if ([string]::IsNullOrWhiteSpace($trimmed)) { continue }
+      $key = $trimmed.ToLowerInvariant()
+      if (-not $seen.ContainsKey($key)) {
+        $seen[$key] = $true
+        $parts.Add($trimmed)
+      }
+    }
+  }
   if ($parts.Count -gt 0) { $env:Path = ($parts -join ';') }
 }
 
