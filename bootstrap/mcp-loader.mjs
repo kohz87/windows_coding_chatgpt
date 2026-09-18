@@ -21,7 +21,7 @@ function usable(candidate) {
 
 let state;
 try {
-  state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  state = JSON.parse(fs.readFileSync(statePath, 'utf8').replace(/^\uFEFF/, ''));
 } catch (error) {
   console.error('Windows Coding Agent bootstrap could not read active-version.json.');
   console.error('Run Setup.cmd or Update.cmd locally to repair the managed installation.');
