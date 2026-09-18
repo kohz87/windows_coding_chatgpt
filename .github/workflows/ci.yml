@@ -38,14 +38,14 @@ jobs:
       - name: Stable bootstrap active-version smoke check
         shell: powershell
         run: |
-          $home = Join-Path $env:RUNNER_TEMP 'WCA Managed Home With Spaces'
-          $versionRoot = Join-Path $home 'versions\v9.9.9'
-          New-Item -ItemType Directory -Force -Path (Join-Path $versionRoot 'src'), (Join-Path $home 'bootstrap') | Out-Null
+          $wcaHome = Join-Path $env:RUNNER_TEMP 'WCA Managed Home With Spaces'
+          $versionRoot = Join-Path $wcaHome 'versions\v9.9.9'
+          New-Item -ItemType Directory -Force -Path (Join-Path $versionRoot 'src'), (Join-Path $wcaHome 'bootstrap') | Out-Null
           "process.stdout.write('STABLE_BOOTSTRAP_OK')" | Set-Content -LiteralPath (Join-Path $versionRoot 'src\index.js') -Encoding ascii
-          Copy-Item .\bootstrap\mcp-loader.mjs (Join-Path $home 'bootstrap\mcp-loader.mjs')
-          @{ schemaVersion = 1; activeVersion = '9.9.9'; path = $versionRoot; lastKnownGoodVersion = ''; lastKnownGoodPath = '' } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $home 'active-version.json') -Encoding utf8
-          $env:WINDOWS_CODING_AGENT_HOME = $home
-          $uri = ([System.Uri]::new((Resolve-Path (Join-Path $home 'bootstrap\mcp-loader.mjs')).Path)).AbsoluteUri
+          Copy-Item .\bootstrap\mcp-loader.mjs (Join-Path $wcaHome 'bootstrap\mcp-loader.mjs')
+          @{ schemaVersion = 1; activeVersion = '9.9.9'; path = $versionRoot; lastKnownGoodVersion = ''; lastKnownGoodPath = '' } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $wcaHome 'active-version.json') -Encoding utf8
+          $env:WINDOWS_CODING_AGENT_HOME = $wcaHome
+          $uri = ([System.Uri]::new((Resolve-Path (Join-Path $wcaHome 'bootstrap\mcp-loader.mjs')).Path)).AbsoluteUri
           $output = & node "--import=$uri" -e 0
           if ($LASTEXITCODE -ne 0 -or ($output -join '') -ne 'STABLE_BOOTSTRAP_OK') { throw 'Stable MCP bootstrap smoke test failed.' }
       - name: MCP file URI path-with-spaces smoke check
