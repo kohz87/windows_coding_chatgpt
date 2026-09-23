@@ -88,20 +88,21 @@ If another process changes the file between inspection and mutation, the operati
 
 The exposed Git surface intentionally avoids an arbitrary `git` command tool.
 
-Supported mutation patterns are narrow:
+Supported Git operations are explicit and bounded to controller-created `work/*` worktrees:
 
-- controller-created `work/*` worktrees
+- status, diff, log, show, tracked-file, branch, and tag inspection
+- fetch and `pull --ff-only` from the locally configured `origin` default branch
+- worktree/index restore for repository-relative paths
+- no-commit cherry-pick and revert using full commit SHAs, plus their abort operations
 - `git diff --check`
 - staging current worktree changes for one guarded local commit
 - normal non-force publication to the configured default branch
 
 There is no MCP option for:
 
-- arbitrary remote selection
-- force-push
-- reset
-- rebase
-- pushing an arbitrary refspec
+- arbitrary remote selection or arbitrary refspecs
+- force-push or forced ref movement
+- reset, rebase, filter-branch/filter-repo, or arbitrary Git subcommands
 - writing directly to the canonical checkout
 
 ## Publication guard
@@ -122,13 +123,15 @@ If any condition fails, publication stops.
 
 A remote ChatGPT session cannot enable publication for itself. That setting remains a local human action in `Setup.cmd`/`Start-Agent.cmd`.
 
-## Script execution
+## Package and script execution
 
 There is no arbitrary shell MCP tool.
 
-`run_npm_script` accepts only script names stored in the local repository allowlist. It then verifies that the script still exists in `package.json` before invoking `npm run <script>`.
+`run_package_script` / `run_npm_script` accept only script names stored in the local repository allowlist. The controller verifies that the script still exists in `package.json` before invoking it.
 
-The script itself is repository-controlled code, so users should authorize repositories they trust.
+For repositories detected as npm projects, `npm_operation` exposes bounded dependency/query operations such as `ci`, install/uninstall/update, dedupe, prune, audit, outdated, list, and view. Dependency-mutating operations add `--ignore-scripts` so package lifecycle hooks cannot turn package management into an arbitrary command channel. `npm exec`, `npx`, arbitrary npm config changes, custom registries, file/URL/Git package specs, and caller-supplied flags are not exposed.
+
+The allowlisted package scripts themselves are repository-controlled code, so users should authorize repositories they trust.
 
 ## Credentials
 

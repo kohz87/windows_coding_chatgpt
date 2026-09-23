@@ -3,6 +3,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { runGit, githubRemoteMatches } from './git.js';
+import { buildGitOperationArgs, buildNpmOperationArgs } from './command-policy.js';
 import { resolveWorkspace } from './workspaces.js';
 
 const execFileAsync = promisify(execFile);
@@ -58,6 +59,74 @@ export async function runAllowedPackageScript(config, workspaceId, script, env =
 
 export async function runAllowedNpmScript(config, workspaceId, script, env = process.env) {
   return runAllowedPackageScript(config, workspaceId, script, env);
+}
+
+export async function runGitOperation(config, workspaceId, operation, options = {}, env = process.env) {
+  const ws = await resolveWorkspace(config, workspaceId, env);
+  let args;
+
+  if (operation === 'fetch') {
+    if (!ws.repository.github) throw new Error('Git fetch requires a configured GitHub origin.');
+    const branch = options.ref ? String(options.ref).trim() : ws.repository.defaultBranch;
+    if (branch !== ws.repository.defaultBranch) throw new Error('Fetch is restricted to the configured default branch.');
+    args = ['fetch', 'origin', ws.repository.defaultBranch];
+  } else if (operation === 'pull_ff') {
+    if (!ws.repository.github) throw new Error('Git pull requires a configured GitHub origin.');
+    const branch = options.ref ? String(options.ref).trim() : ws.repository.defaultBranch;
+    if (branch !== ws.repository.defaultBranch) throw new Error('Pull is restricted to the configured default branch.');
+    const status = await runGit(['status', '--porcelain=v1'], ws.path);
+    if (!status.ok || status.stdout.trim()) throw new Error('Fast-forward pull requires a clean isolated worktree.');
+    args = ['pull', '--ff-only', 'origin', ws.repository.defaultBranch];
+  } else {
+    args = buildGitOperationArgs(operation, options);
+  }
+
+  const result = await runGit(args, ws.path, 10 * 60_000);
+  return {
+    ok: result.ok,
+    operation,
+    args,
+    exitCode: result.exitCode,
+    stdout: result.stdout.slice(-100_000),
+    stderr: result.stderr.slice(-50_000),
+    error: result.error,
+  };
+}
+
+export async function runNpmOperation(config, workspaceId, operation, options = {}, env = process.env) {
+  const ws = await resolveWorkspace(config, workspaceId, env);
+  if (!ws.repository.permissions.runScripts) throw new Error('Package operations are disabled for this repository.');
+  if ((ws.repository.packageManager ?? 'npm') !== 'npm') {
+    throw new Error(`Repository uses '${ws.repository.packageManager}', so npm_operation is disabled to avoid mutating a different package-manager lockfile.`);
+  }
+
+  const args = buildNpmOperationArgs(operation, options);
+  const command = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  try {
+    const { stdout, stderr } = await execFileAsync(command, args, {
+      cwd: ws.path,
+      windowsHide: true,
+      timeout: 10 * 60_000,
+      maxBuffer: 20 * 1024 * 1024,
+    });
+    return {
+      ok: true,
+      operation,
+      args,
+      stdout: String(stdout ?? '').slice(-100_000),
+      stderr: String(stderr ?? '').slice(-50_000),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      operation,
+      args,
+      exitCode: typeof error.code === 'number' ? error.code : -1,
+      stdout: String(error.stdout ?? '').slice(-100_000),
+      stderr: String(error.stderr ?? '').slice(-50_000),
+      error: error.message,
+    };
+  }
 }
 
 export async function commitWorkspace(config, workspaceId, expectedHead, message, env = process.env) {
