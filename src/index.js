@@ -9,8 +9,9 @@ import { readWorkspaceFile, writeWorkspaceFile, deleteWorkspaceFile } from './fi
 import { securePath } from './security.js';
 import { runGit } from './git.js';
 import { repositoryStatus, repositoryRemoteStatus, runAllowedPackageScript, runAllowedNpmScript, runGitOperation, runNpmOperation, commitWorkspace, publishWorkspace } from './operations.js';
+import { agentCliStatus, runAgentCli } from './agent-cli.js';
 
-const VERSION = '0.1.7';
+const VERSION = '0.1.8';
 const text = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value });
 const fail = (error) => ({ isError: true, content: [{ type: 'text', text: error?.message ?? String(error) }] });
 const guarded = (fn) => async (args) => { try { return text(await fn(args)); } catch (error) { return fail(error); } };
@@ -158,6 +159,24 @@ function createServer() {
     }),
   }, guarded(async ({ workspaceId, operation, packages, dev, exact, depth, field }) =>
     runNpmOperation(await loadConfig(), workspaceId, operation, { packages, dev, exact, depth, field })));
+
+  server.registerTool('agent_cli_status', {
+    description: 'Inspect locally configured Codex CLI and Antigravity CLI launch permissions and availability. Enable/disable remains a local human-only Start-Agent action.',
+    inputSchema: z.object({}),
+  }, guarded(async () => agentCliStatus(await loadConfig())));
+
+  server.registerTool('agent_run', {
+    description: 'Run a locally enabled coding-agent CLI inside one isolated controller-created worktree. Supported agents are codex and agy. The tool cannot enable an agent, change its executable path, escape the worktree, or request unrestricted permission bypasses.',
+    inputSchema: z.object({
+      workspaceId: z.string(),
+      agent: z.enum(['codex', 'agy']),
+      prompt: z.string().min(1).max(100000),
+      model: z.string().max(120).nullable().default(null),
+      effort: z.enum(['low', 'medium', 'high']).nullable().default(null),
+      timeoutSeconds: z.number().int().min(30).max(3600).default(1200),
+    }),
+  }, guarded(async ({ workspaceId, agent, prompt, model, effort, timeoutSeconds }) =>
+    runAgentCli(await loadConfig(), workspaceId, agent, prompt, { model, effort, timeoutSeconds })));
 
   server.registerTool('repo_commit', {
     description: 'Create one local non-amend commit from an isolated worktree after exact HEAD verification. No push is performed.',

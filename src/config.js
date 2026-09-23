@@ -5,13 +5,43 @@ import { getAgentHome, getConfigPath } from './paths.js';
 import { validateRepositoryId } from './security.js';
 
 export function emptyConfig() {
-  return { schemaVersion: 1, repositories: {} };
+  return {
+    schemaVersion: 1,
+    agentCli: {
+      codex: { enabled: false, path: '' },
+      agy: { enabled: false, path: '' },
+    },
+    repositories: {},
+  };
+}
+
+function normalizeAgentCli(config) {
+  config.agentCli ??= {};
+  for (const name of ['codex', 'agy']) {
+    config.agentCli[name] ??= {};
+    config.agentCli[name].enabled ??= false;
+    config.agentCli[name].path ??= '';
+  }
+  return config;
 }
 
 export function validateConfig(config) {
   if (!config || config.schemaVersion !== 1 || typeof config.repositories !== 'object' || Array.isArray(config.repositories)) {
     throw new Error('Unsupported or malformed configuration.');
   }
+
+  normalizeAgentCli(config);
+  if (!config.agentCli || typeof config.agentCli !== 'object' || Array.isArray(config.agentCli)) {
+    throw new Error('Configuration agentCli must be an object.');
+  }
+  for (const name of ['codex', 'agy']) {
+    const entry = config.agentCli[name];
+    if (!entry || typeof entry !== 'object' || typeof entry.enabled !== 'boolean' || typeof entry.path !== 'string') {
+      throw new Error(`Agent CLI '${name}' has invalid configuration.`);
+    }
+    if (entry.path && !path.isAbsolute(entry.path)) throw new Error(`Agent CLI '${name}' path must be absolute.`);
+  }
+
   for (const [id, repo] of Object.entries(config.repositories)) {
     validateRepositoryId(id);
     if (!repo || typeof repo !== 'object' || typeof repo.path !== 'string' || !path.isAbsolute(repo.path)) {

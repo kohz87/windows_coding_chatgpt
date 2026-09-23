@@ -1,12 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { runGit, githubRemoteMatches } from './git.js';
 import { buildGitOperationArgs, buildNpmOperationArgs } from './command-policy.js';
 import { resolveWorkspace } from './workspaces.js';
-
-const execFileAsync = promisify(execFile);
+import { runProcess } from './process.js';
 
 export async function repositoryStatus(repo) {
   const [branch, head, status] = await Promise.all([
@@ -49,12 +46,20 @@ export async function runAllowedPackageScript(config, workspaceId, script, env =
 
   const manager = ws.repository.packageManager ?? 'npm';
   const command = process.platform === 'win32' ? `${manager}.cmd` : manager;
-  try {
-    const { stdout, stderr } = await execFileAsync(command, ['run', script], { cwd: ws.path, windowsHide: true, timeout: 10 * 60_000, maxBuffer: 20 * 1024 * 1024 });
-    return { ok: true, packageManager: manager, stdout: String(stdout ?? '').slice(-100_000), stderr: String(stderr ?? '').slice(-50_000) };
-  } catch (error) {
-    return { ok: false, packageManager: manager, stdout: String(error.stdout ?? '').slice(-100_000), stderr: String(error.stderr ?? '').slice(-50_000), error: error.message };
-  }
+  const result = await runProcess(command, ['run', script], {
+    cwd: ws.path,
+    timeout: 10 * 60_000,
+    maxBuffer: 20 * 1024 * 1024,
+    env,
+  });
+  return {
+    ok: result.ok,
+    packageManager: manager,
+    exitCode: result.exitCode,
+    stdout: result.stdout.slice(-100_000),
+    stderr: result.stderr.slice(-50_000),
+    error: result.error,
+  };
 }
 
 export async function runAllowedNpmScript(config, workspaceId, script, env = process.env) {
@@ -102,31 +107,21 @@ export async function runNpmOperation(config, workspaceId, operation, options = 
 
   const args = buildNpmOperationArgs(operation, options);
   const command = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  try {
-    const { stdout, stderr } = await execFileAsync(command, args, {
-      cwd: ws.path,
-      windowsHide: true,
-      timeout: 10 * 60_000,
-      maxBuffer: 20 * 1024 * 1024,
-    });
-    return {
-      ok: true,
-      operation,
-      args,
-      stdout: String(stdout ?? '').slice(-100_000),
-      stderr: String(stderr ?? '').slice(-50_000),
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      operation,
-      args,
-      exitCode: typeof error.code === 'number' ? error.code : -1,
-      stdout: String(error.stdout ?? '').slice(-100_000),
-      stderr: String(error.stderr ?? '').slice(-50_000),
-      error: error.message,
-    };
-  }
+  const result = await runProcess(command, args, {
+    cwd: ws.path,
+    timeout: 10 * 60_000,
+    maxBuffer: 20 * 1024 * 1024,
+    env,
+  });
+  return {
+    ok: result.ok,
+    operation,
+    args,
+    exitCode: result.exitCode,
+    stdout: result.stdout.slice(-100_000),
+    stderr: result.stderr.slice(-50_000),
+    error: result.error,
+  };
 }
 
 export async function commitWorkspace(config, workspaceId, expectedHead, message, env = process.env) {

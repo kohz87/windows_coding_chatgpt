@@ -18,6 +18,7 @@ The important boundary is simple: **the human chooses repository directories loc
 - Per-repository package-manager detection (npm, pnpm, or yarn) with locally allowlisted scripts
 - Bounded worktree Git operations for inspection, fetch/ff-only pull, restore, and no-commit cherry-pick/revert
 - Bounded npm dependency/query operations with lifecycle scripts disabled for dependency mutation
+- Optional locally enabled Codex CLI and Antigravity CLI (`agy`) runners, confined to isolated worktrees
 - User-scoped toolchain registry for Node.js, npm, npx, Git, PowerShell, WinGet, tunnel-client, pnpm, and yarn
 - Optional guided dependency installation and repair
 - Versioned managed installation with stable MCP bootstrap, self-heal, verified updates, and rollback
@@ -342,6 +343,14 @@ See [docs/SECURITY.md](docs/SECURITY.md).
 9. optionally `repo_publish`
 
 Publication is disabled unless the user enabled it locally for that repository.
+
+### Optional coding-agent CLIs
+
+`Start-Agent.cmd` exposes a local **Toggle coding-agent CLI** action for `codex` and `agy`. Both are disabled by default. Enabling one discovers the executable from the local PATH, verifies `--version`, and stores the exact absolute executable path in the local controller config.
+
+After local enablement, MCP clients can use `agent_cli_status` and `agent_run`. Runs are accepted only for controller-created isolated worktrees. Codex runs use `codex exec --sandbox workspace-write`; Antigravity runs use headless `agy -p` with its sandbox enabled. The MCP cannot enable a runner, replace its executable path, request Codex `danger-full-access`, or pass Antigravity `--dangerously-skip-permissions`.
+
+Both CLIs may use their own native agent/subagent capabilities according to their locally authenticated configuration and permission policies.
 
 ## Development
 

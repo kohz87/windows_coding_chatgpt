@@ -74,3 +74,10 @@ If no supported GitHub origin is detected, local worktree operations still work,
 Setup initially detects common scripts. The allowlist is intentionally names only, not arbitrary command strings supplied by the MCP client.
 
 Advanced users may edit the configuration manually, but `Start-Agent.cmd` is the recommended interface for ordinary repository authorization and publication toggles.
+
+
+## Coding-agent CLI toggles
+
+The global `agentCli` settings are local controller authorization, separate from repository permissions.
+
+Both `codex` and `agy` default to disabled. Use `Start-Agent.cmd` -> **Toggle coding-agent CLI** rather than editing paths manually. When enabled, the manager discovers the executable on PATH, probes its version, and persists its exact absolute path. MCP callers can inspect status and run enabled agents, but cannot change these toggle settings.

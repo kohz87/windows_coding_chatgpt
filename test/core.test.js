@@ -6,10 +6,12 @@ import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
 import { validateRelativePath } from '../src/security.js';
 import { parseGitHubRemote, runGit } from '../src/git.js';
 import { buildGitOperationArgs, buildNpmOperationArgs, validateNpmPackageSpec } from '../src/command-policy.js';
+import { buildAgentArgs, validateAgentName } from '../src/agent-cli.js';
 import { emptyConfig, loadConfig, saveConfig } from '../src/config.js';
 import { registerRepository, resolveRepository } from '../src/repositories.js';
 import { createWorktree, resolveWorkspace } from '../src/workspaces.js';
 import { readWorkspaceFile, writeWorkspaceFile } from '../src/files.js';
+import { runProcess } from '../src/process.js';
 
 async function git(args, cwd) {
   const result = await runGit(args, cwd);
@@ -95,4 +97,47 @@ test('bounded npm policy disables lifecycle scripts for dependency mutations', (
   assert.throws(() => buildNpmOperationArgs('exec', { packages: ['tool'] }), /Unsupported npm operation/);
   assert.throws(() => validateNpmPackageSpec('pkg --foreground-scripts'), /Unsafe npm package spec/);
   assert.throws(() => validateNpmPackageSpec('https://example.com/pkg.tgz'), /Unsafe npm package spec/);
+});
+
+
+test('coding-agent CLI configuration defaults to locally disabled', () => {
+  const config = emptyConfig();
+  assert.equal(config.agentCli.codex.enabled, false);
+  assert.equal(config.agentCli.agy.enabled, false);
+  assert.equal(config.agentCli.codex.path, '');
+  assert.equal(config.agentCli.agy.path, '');
+});
+
+test('coding-agent CLI argument builders stay bounded to safe execution modes', () => {
+  const codex = buildAgentArgs('codex', 'Fix the tests', { model: 'gpt-5.6-sol', effort: 'high' }, 'C:\\work');
+  assert.deepEqual(codex, [
+    'exec', '--sandbox', 'workspace-write',
+    '--model', 'gpt-5.6-sol',
+    '--config', 'model_reasoning_effort="high"',
+    '-',
+  ]);
+  assert.equal(codex.includes('danger-full-access'), false);
+
+  const agy = buildAgentArgs('agy', 'Audit the code', { model: null, effort: 'medium' }, 'C:\\work');
+  assert.deepEqual(agy, [
+    '--input-format', 'stream-json',
+    '--output-format', 'stream-json',
+    '--cwd', 'C:\\work',
+    '--sandbox',
+    '--effort', 'medium',
+  ]);
+  assert.equal(agy.includes('--dangerously-skip-permissions'), false);
+
+  assert.throws(() => validateAgentName('powershell'), /Unsupported coding agent/);
+  assert.throws(() => buildAgentArgs('codex', 'x', { model: '--bad', effort: null }, 'C:\\work'), /Invalid model/);
+});
+
+
+test('runProcess launches Windows cmd wrappers without execFile EINVAL', { skip: process.platform !== 'win32' }, async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'wca-cmd-test-'));
+  const script = path.join(root, 'probe.cmd');
+  await writeFile(script, '@echo off\r\necho WRAPPER_OK %~1\r\n', 'utf8');
+  const result = await runProcess(script, ['ARG_OK'], { timeout: 20_000 });
+  assert.equal(result.ok, true, result.stderr || result.error);
+  assert.match(result.stdout, /WRAPPER_OK ARG_OK/);
 });

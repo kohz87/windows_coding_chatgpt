@@ -7,6 +7,8 @@ This repository is a security-bounded local coding control plane. Preserve the r
 ## Security invariants
 
 - Do not add an arbitrary shell MCP tool.
+- Optional external coding-agent CLIs must remain explicit named integrations, disabled by default, locally enabled only, pinned to a locally discovered executable path, and restricted to controller-created worktrees.
+- Never expose external-agent permission-bypass flags through MCP.
 - Do not let MCP callers authorize new absolute repository paths.
 - Do not make canonical repository mutation a normal tool path.
 - Do not expose arbitrary Git remote/refspec/force options.

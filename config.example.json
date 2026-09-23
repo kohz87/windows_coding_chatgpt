@@ -1,5 +1,15 @@
 {
   "schemaVersion": 1,
+  "agentCli": {
+    "codex": {
+      "enabled": false,
+      "path": ""
+    },
+    "agy": {
+      "enabled": false,
+      "path": ""
+    }
+  },
   "repositories": {
     "example-project": {
       "name": "Example Project",
@@ -13,7 +23,11 @@
         "commit": true,
         "publish": false
       },
-      "allowedPackageScripts": ["test", "validate", "build"]
+      "allowedPackageScripts": [
+        "test",
+        "validate",
+        "build"
+      ]
     }
   }
 }

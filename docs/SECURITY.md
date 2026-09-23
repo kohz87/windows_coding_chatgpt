@@ -133,6 +133,16 @@ For repositories detected as npm projects, `npm_operation` exposes bounded depen
 
 The allowlisted package scripts themselves are repository-controlled code, so users should authorize repositories they trust.
 
+## Optional coding-agent CLI execution
+
+Codex CLI and Antigravity CLI (`agy`) are disabled by default. They can be enabled or disabled only through the local human-facing `Start-Agent.cmd` repository manager. Enabling records the exact discovered executable path after a successful `--version` probe.
+
+Remote MCP callers cannot toggle these runners or supply an executable path. `agent_run` accepts only `codex` or `agy`, requires a controller-created isolated worktree, and runs with that worktree as the process working directory.
+
+The controller deliberately does not expose arbitrary CLI arguments. Codex is constrained to its `workspace-write` sandbox. Antigravity uses headless print mode with its sandbox enabled and continues to honor the user's local Antigravity permission policy. The controller never passes Codex `danger-full-access` or Antigravity `--dangerously-skip-permissions`.
+
+These agents can still read/edit code and invoke tools within the permissions granted by their own sandboxes and local configuration. Treat enabling a coding-agent CLI as an explicit local trust decision.
+
 ## Credentials
 
 The repository registry stores repository paths, GitHub slugs, branches, permissions, and allowed script names. It does not store GitHub tokens or OpenAI Secure MCP Tunnel runtime API keys. Optional tunnel credential persistence uses a separate DPAPI ciphertext file under the user-scoped Windows Coding Agent data directory.
