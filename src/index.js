@@ -8,9 +8,9 @@ import { createWorktree, resolveWorkspace } from './workspaces.js';
 import { readWorkspaceFile, writeWorkspaceFile, deleteWorkspaceFile } from './files.js';
 import { securePath } from './security.js';
 import { runGit } from './git.js';
-import { repositoryStatus, repositoryRemoteStatus, runAllowedPackageScript, runAllowedNpmScript, commitWorkspace, publishWorkspace } from './operations.js';
+import { repositoryStatus, repositoryRemoteStatus, runAllowedPackageScript, runAllowedNpmScript, runGitOperation, runNpmOperation, commitWorkspace, publishWorkspace } from './operations.js';
 
-const VERSION = '0.1.6';
+const VERSION = '0.1.7';
 const text = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value });
 const fail = (error) => ({ isError: true, content: [{ type: 'text', text: error?.message ?? String(error) }] });
 const guarded = (fn) => async (args) => { try { return text(await fn(args)); } catch (error) { return fail(error); } };
@@ -131,6 +131,33 @@ function createServer() {
     description: 'Backward-compatible alias for run_package_script. The detected repository package manager is used even when it is not npm.',
     inputSchema: z.object({ workspaceId: z.string(), script: z.string() }),
   }, guarded(async ({ workspaceId, script }) => runAllowedNpmScript(await loadConfig(), workspaceId, script)));
+
+  server.registerTool('git_operation', {
+    description: 'Run a bounded Git operation inside an isolated worktree. Supports status/diff/log/show/listing, configured-origin fetch/ff-only pull, restore, no-commit cherry-pick/revert, and abort operations. Arbitrary remotes, refspecs, force operations, reset, rebase, and direct canonical mutations are not exposed.',
+    inputSchema: z.object({
+      workspaceId: z.string(),
+      operation: z.enum(['status', 'diff', 'log', 'show', 'ls_files', 'branch_list', 'tag_list', 'fetch', 'pull_ff', 'restore', 'restore_staged', 'cherry_pick_no_commit', 'cherry_pick_abort', 'revert_no_commit', 'revert_abort']),
+      ref: z.string().nullable().default(null),
+      paths: z.array(z.string()).max(100).default([]),
+      staged: z.boolean().default(false),
+      maxCount: z.number().int().min(1).max(200).default(30),
+    }),
+  }, guarded(async ({ workspaceId, operation, ref, paths, staged, maxCount }) =>
+    runGitOperation(await loadConfig(), workspaceId, operation, { ref, paths, staged, maxCount })));
+
+  server.registerTool('npm_operation', {
+    description: 'Run a bounded npm dependency/query operation inside an isolated worktree. Dependency mutations use --ignore-scripts; repository-defined executable scripts remain restricted to run_package_script/run_npm_script allowlists.',
+    inputSchema: z.object({
+      workspaceId: z.string(),
+      operation: z.enum(['ci', 'install', 'install_packages', 'uninstall_packages', 'update', 'dedupe', 'prune', 'audit', 'audit_fix', 'outdated', 'list', 'view']),
+      packages: z.array(z.string()).max(50).default([]),
+      dev: z.boolean().default(false),
+      exact: z.boolean().default(false),
+      depth: z.number().int().min(0).max(10).default(0),
+      field: z.string().nullable().default(null),
+    }),
+  }, guarded(async ({ workspaceId, operation, packages, dev, exact, depth, field }) =>
+    runNpmOperation(await loadConfig(), workspaceId, operation, { packages, dev, exact, depth, field })));
 
   server.registerTool('repo_commit', {
     description: 'Create one local non-amend commit from an isolated worktree after exact HEAD verification. No push is performed.',
