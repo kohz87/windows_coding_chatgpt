@@ -5,6 +5,7 @@ import path from 'node:path';
 import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
 import { validateRelativePath } from '../src/security.js';
 import { parseGitHubRemote, runGit } from '../src/git.js';
+import { buildGitOperationArgs, buildNpmOperationArgs, validateNpmPackageSpec } from '../src/command-policy.js';
 import { emptyConfig, loadConfig, saveConfig } from '../src/config.js';
 import { registerRepository, resolveRepository } from '../src/repositories.js';
 import { createWorktree, resolveWorkspace } from '../src/workspaces.js';
@@ -72,4 +73,26 @@ test('authorized local-only repository can create isolated guarded worktree', as
   await writeWorkspaceFile(ws.path, 'hello.txt', 'changed\n', { expectedSha256: before.sha256 });
   assert.equal(await readFile(path.join(ws.path, 'hello.txt'), 'utf8'), 'changed\n');
   assert.equal(await readFile(path.join(canonicalRepoPath, 'hello.txt'), 'utf8'), 'hello\n');
+});
+
+
+test('bounded Git operation policy allows useful commands and blocks unsafe refs/paths', () => {
+  assert.deepEqual(buildGitOperationArgs('status'), ['status', '--short', '--branch']);
+  assert.deepEqual(buildGitOperationArgs('diff', { staged: true, paths: ['src/index.js'] }), ['diff', '--no-ext-diff', '--cached', '--', 'src/index.js']);
+  assert.deepEqual(buildGitOperationArgs('cherry_pick_no_commit', { ref: '0123456789abcdef0123456789abcdef01234567' }), ['cherry-pick', '--no-commit', '0123456789abcdef0123456789abcdef01234567']);
+  assert.throws(() => buildGitOperationArgs('reset', {}), /Unsupported Git operation/);
+  assert.throws(() => buildGitOperationArgs('show', { ref: '--help' }), /Invalid Git ref/);
+  assert.throws(() => buildGitOperationArgs('diff', { paths: ['../outside'] }), /Traversal/);
+});
+
+test('bounded npm policy disables lifecycle scripts for dependency mutations', () => {
+  assert.deepEqual(buildNpmOperationArgs('ci'), ['ci', '--ignore-scripts']);
+  assert.deepEqual(
+    buildNpmOperationArgs('install_packages', { packages: ['zod@^4.0.0', '@scope/pkg@1.2.3'], dev: true, exact: true }),
+    ['install', '--ignore-scripts', '--save-dev', '--save-exact', 'zod@^4.0.0', '@scope/pkg@1.2.3'],
+  );
+  assert.deepEqual(buildNpmOperationArgs('audit_fix'), ['audit', 'fix', '--ignore-scripts']);
+  assert.throws(() => buildNpmOperationArgs('exec', { packages: ['tool'] }), /Unsupported npm operation/);
+  assert.throws(() => validateNpmPackageSpec('pkg --foreground-scripts'), /Unsafe npm package spec/);
+  assert.throws(() => validateNpmPackageSpec('https://example.com/pkg.tgz'), /Unsafe npm package spec/);
 });
