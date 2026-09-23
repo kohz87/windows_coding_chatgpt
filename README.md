@@ -16,6 +16,8 @@ The important boundary is simple: **the human chooses repository directories loc
 - SHA-256 guarded file replacement/deletion
 - Path traversal, absolute-path, `.git`, Windows device-name, ADS, and worktree escape protection
 - Per-repository package-manager detection (npm, pnpm, or yarn) with locally allowlisted scripts
+- Bounded worktree Git operations for inspection, fetch/ff-only pull, restore, and no-commit cherry-pick/revert
+- Bounded npm dependency/query operations with lifecycle scripts disabled for dependency mutation
 - User-scoped toolchain registry for Node.js, npm, npx, Git, PowerShell, WinGet, tunnel-client, pnpm, and yarn
 - Optional guided dependency installation and repair
 - Versioned managed installation with stable MCP bootstrap, self-heal, verified updates, and rollback
@@ -333,10 +335,11 @@ See [docs/SECURITY.md](docs/SECURITY.md).
 2. `repository_status`
 3. `worktree_create`
 4. inspect/edit files in the isolated worktree
-5. `run_npm_script` for allowlisted checks
-6. `git_diff_check`
-7. `repo_commit`
-8. optionally `repo_publish`
+5. `run_npm_script` for allowlisted checks, or `npm_operation` for bounded npm dependency/query work
+6. `git_operation` for bounded Git inspection/worktree operations as needed
+7. `git_diff_check`
+8. `repo_commit`
+9. optionally `repo_publish`
 
 Publication is disabled unless the user enabled it locally for that repository.
 
