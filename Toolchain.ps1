@@ -422,9 +422,9 @@ function Ensure-WcaStableFiles {
   if (-not (Test-Path -LiteralPath (Join-Path $bootstrapSource 'mcp-loader.mjs') -PathType Leaf)) { throw 'Distribution is missing bootstrap\mcp-loader.mjs.' }
   if (-not (Test-Path -LiteralPath (Join-Path $bootstrapSource 'launch.ps1') -PathType Leaf)) { throw 'Distribution is missing bootstrap\launch.ps1.' }
 
-  $home = Get-WcaAgentHome
-  $bootstrapTarget = Join-Path $home 'bootstrap'
-  $binTarget = Join-Path $home 'bin'
+  $agentHome = Get-WcaAgentHome
+  $bootstrapTarget = Join-Path $agentHome 'bootstrap'
+  $binTarget = Join-Path $agentHome 'bin'
   New-Item -ItemType Directory -Force -Path $bootstrapTarget, $binTarget | Out-Null
   Copy-Item -LiteralPath (Join-Path $bootstrapSource 'mcp-loader.mjs') -Destination (Join-Path $bootstrapTarget 'mcp-loader.mjs') -Force
   Copy-Item -LiteralPath (Join-Path $bootstrapSource 'launch.ps1') -Destination (Join-Path $bootstrapTarget 'launch.ps1') -Force
@@ -556,7 +556,9 @@ function Invoke-WcaToolchainSelfTest {
     $state = [pscustomobject]@{ schemaVersion = 1; tools = [pscustomobject]@{}; updatedAt = '' }
     Save-WcaToolchainState -State $state
     if (-not (Test-Path -LiteralPath (Get-WcaToolchainPath) -PathType Leaf)) { throw 'Toolchain state was not written.' }
-    if ((Compare-WcaVersion '0.1.5' '0.1.4') -le 0) { throw 'Version comparison failed.' }
+    if ((Compare-WcaVersion '0.1.6' '0.1.5') -le 0) { throw 'Version comparison failed.' }
+    Ensure-WcaStableFiles -SourceRoot $PSScriptRoot
+    if (-not (Test-Path -LiteralPath (Get-WcaStableLauncherPath) -PathType Leaf)) { throw 'Stable launcher self-test failed.' }
     if (-not (Test-WcaApplicationControlMessage 'An Application Control policy has blocked this file')) { throw 'Application Control detection failed.' }
     if (Test-WcaPathInsideVersions 'C:\Windows\System32') { throw 'Managed path containment accepted an external path.' }
     Write-Host 'TOOLCHAIN SELFTEST OK'
