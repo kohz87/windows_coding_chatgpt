@@ -10,7 +10,7 @@ import { securePath } from './security.js';
 import { runGit } from './git.js';
 import { repositoryStatus, repositoryRemoteStatus, runAllowedPackageScript, runAllowedNpmScript, commitWorkspace, publishWorkspace } from './operations.js';
 
-const VERSION = '0.1.5';
+const VERSION = '0.1.6';
 const text = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value });
 const fail = (error) => ({ isError: true, content: [{ type: 'text', text: error?.message ?? String(error) }] });
 const guarded = (fn) => async (args) => { try { return text(await fn(args)); } catch (error) { return fail(error); } };
