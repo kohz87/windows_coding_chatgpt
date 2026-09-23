@@ -17,15 +17,15 @@ function Get-LauncherHome {
   return (Join-Path $userHome '.windows-coding-agent')
 }
 
-$home = Get-LauncherHome
-$statePath = Join-Path $home 'active-version.json'
+$launcherHome = Get-LauncherHome
+$statePath = Join-Path $launcherHome 'active-version.json'
 if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) {
   throw "No managed Windows Coding Agent installation was found. Run Setup.cmd first. Expected: $statePath"
 }
 
 $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
 $root = [string]$state.path
-$versionsRoot = [IO.Path]::GetFullPath((Join-Path $home 'versions')).TrimEnd('\') + '\'
+$versionsRoot = [IO.Path]::GetFullPath((Join-Path $launcherHome 'versions')).TrimEnd('\') + '\'
 if ([string]::IsNullOrWhiteSpace($root)) { throw 'active-version.json does not contain an installation path.' }
 $root = [IO.Path]::GetFullPath($root)
 if (-not $root.StartsWith($versionsRoot, [StringComparison]::OrdinalIgnoreCase)) {
@@ -35,7 +35,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $root 'package.json') -PathType Leaf
   throw "Managed installation is incomplete: $root"
 }
 
-$toolchainPath = Join-Path $home 'toolchain.json'
+$toolchainPath = Join-Path $launcherHome 'toolchain.json'
 $node = $null
 if (Test-Path -LiteralPath $toolchainPath -PathType Leaf) {
   try {

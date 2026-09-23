@@ -50,6 +50,13 @@ jobs:
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script), [ref]$null, [ref]$errors) | Out-Null
             if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error "$script : $($_.Message)" }; exit 1 }
           }
+          $homeAssignments = foreach ($file in (& git ls-files '*.ps1')) {
+            Select-String -LiteralPath $file -Pattern '^\s*\$home\s*='
+          }
+          if ($homeAssignments) {
+            $homeAssignments | ForEach-Object { Write-Error "Reserved PowerShell automatic variable assignment: $($_.Path):$($_.LineNumber): $($_.Line)" }
+            throw 'Do not assign to $HOME (PowerShell variables are case-insensitive and HOME is read-only).'
+          }
           powershell -NoProfile -ExecutionPolicy Bypass -Command ". .\Toolchain.ps1; Invoke-WcaToolchainSelfTest"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Dependencies.ps1 -SelfTest

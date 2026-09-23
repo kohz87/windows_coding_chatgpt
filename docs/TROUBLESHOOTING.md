@@ -91,3 +91,10 @@ Open **Maintenance -> Scan / install dependencies** or **Maintenance -> Self-hea
 ## An update fails validation
 
 A candidate update is staged and tested before `active-version.json` changes. If validation fails, the existing active version remains in use. If a newly activated version later becomes unusable and a previous managed version exists, choose **Maintenance -> Roll back to last-known-good agent version**.
+
+
+## Cannot overwrite variable HOME because it is read-only or constant
+
+PowerShell variable names are case-insensitive, so a script-local `$home` assignment collides with the built-in read-only `$HOME` automatic variable.
+
+This affected the managed-runtime preparation and stable launcher in v0.1.5. Upgrade to v0.1.6 or newer. The fix uses non-reserved names such as `$agentHome` and `$launcherHome`, and CI now rejects tracked PowerShell scripts that assign to `$home`.
