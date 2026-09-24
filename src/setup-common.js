@@ -23,9 +23,14 @@ export async function interactiveAddRepository(rl, config = null) {
   const suggested = makeRepositoryId(rawPath, config.repositories);
   const idInput = (await rl.question(`Repository ID [${suggested}]: `)).trim();
   const id = idInput || suggested;
+  const allScriptsAnswer = (await rl.question('Allow all package.json scripts, including future additions? [y/N]: ')).trim().toLowerCase();
   const publishAnswer = (await rl.question('Allow guarded fast-forward publication to the configured GitHub branch? [y/N]: ')).trim().toLowerCase();
-  const repo = await registerRepository(config, id, rawPath, { permissions: { publish: publishAnswer === 'y' || publishAnswer === 'yes' } });
+  const allowAllPackageScripts = allScriptsAnswer === 'y' || allScriptsAnswer === 'yes';
+  const repo = await registerRepository(config, id, rawPath, {
+    allowedPackageScripts: allowAllPackageScripts ? ['*'] : undefined,
+    permissions: { publish: publishAnswer === 'y' || publishAnswer === 'yes' },
+  });
   const configPath = await saveConfig(config);
-  output.write(`\nAuthorized '${id}'\n  Path: ${repo.path}\n  GitHub: ${repo.github ?? '(no GitHub origin detected)'}\n  Branch: ${repo.defaultBranch}\n  Package manager: ${repo.packageManager ?? 'npm'}\n  Config: ${configPath}\n\n`);
+  output.write(`\nAuthorized '${id}'\n  Path: ${repo.path}\n  GitHub: ${repo.github ?? '(no GitHub origin detected)'}\n  Branch: ${repo.defaultBranch}\n  Package manager: ${repo.packageManager ?? 'npm'}\n  Package scripts: ${repo.allowedPackageScripts?.includes('*') ? 'all declared scripts (including future additions)' : (repo.allowedPackageScripts || []).join(', ') || '(none)'}\n  Config: ${configPath}\n\n`);
   return { config, id, repo };
 }

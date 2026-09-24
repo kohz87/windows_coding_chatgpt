@@ -57,7 +57,7 @@ export function validateConfig(config) {
       throw new Error(`Repository '${id}' has invalid packageManager.`);
     }
     const allowedScripts = repo.allowedPackageScripts ?? repo.allowedNpmScripts;
-    if (!Array.isArray(allowedScripts) || allowedScripts.some((v) => typeof v !== 'string' || !/^[A-Za-z0-9_.:@/-]+$/.test(v))) {
+    if (!Array.isArray(allowedScripts) || allowedScripts.some((v) => typeof v !== 'string' || (v !== '*' && !/^[A-Za-z0-9_.:@/-]+$/.test(v)))) {
       throw new Error(`Repository '${id}' has invalid allowed package scripts.`);
     }
   }

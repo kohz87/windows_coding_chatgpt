@@ -38,4 +38,4 @@ On Windows, also run `Doctor.cmd` after local setup changes when practical.
 - Dependency installation, agent upgrades, rollback, repository authorization, and publication enablement remain local human control-plane actions. Do not expose unrestricted MCP tools for them.
 - Automatic tunnel-client installation must use the official OpenAI release and verify SHA-256 before installation. Do not bypass Windows Application Control, WDAC, AppLocker, or Smart App Control.
 - Managed updates must validate a staged candidate before changing the active version.
-- Repository scripts remain locally allowlisted and use the detected package manager (npm, pnpm, or yarn). No arbitrary shell surface.
+- Repository scripts remain locally allowlisted and use the detected package manager (npm, pnpm, or yarn). A locally configured `allowedPackageScripts: ["*"]` may authorize all scripts declared by that repository, including future additions, but MCP callers must not enable that policy themselves. No arbitrary shell surface.

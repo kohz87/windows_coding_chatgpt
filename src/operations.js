@@ -40,7 +40,7 @@ export async function runAllowedPackageScript(config, workspaceId, script, env =
   const ws = await resolveWorkspace(config, workspaceId, env);
   if (!ws.repository.permissions.runScripts) throw new Error('Script execution is disabled for this repository.');
   const allowedScripts = ws.repository.allowedPackageScripts ?? ws.repository.allowedNpmScripts ?? [];
-  if (!allowedScripts.includes(script)) throw new Error(`Package script '${script}' is not in the repository allowlist.`);
+  if (!allowedScripts.includes('*') && !allowedScripts.includes(script)) throw new Error(`Package script '${script}' is not in the repository allowlist.`);
   const pkg = JSON.parse(await readFile(path.join(ws.path, 'package.json'), 'utf8'));
   if (typeof pkg.scripts?.[script] !== 'string') throw new Error(`Package script '${script}' is not defined.`);
 

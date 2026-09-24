@@ -1,5 +1,6 @@
 import { loadConfig, saveConfig } from './config.js';
 import { createPrompt, interactiveAddRepository } from './setup-common.js';
+import { detectPackageScripts } from './repositories.js';
 import { getConfigPath } from './paths.js';
 import { discoverAgentCli, probeAgentCli, validateAgentName } from './agent-cli.js';
 
@@ -36,6 +37,7 @@ function printRepositories(config) {
     console.log(`       Path    : ${repo.path}`);
     console.log(`       GitHub  : ${repo.github ?? '(local only)'}`);
     console.log(`       Package : ${repo.packageManager ?? 'npm'}`);
+    console.log(`       Scripts : ${(repo.allowedPackageScripts ?? repo.allowedNpmScripts ?? []).includes('*') ? 'all declared (future included)' : `${(repo.allowedPackageScripts ?? repo.allowedNpmScripts ?? []).length} exact allowlisted`}`);
     console.log(`       Publish : ${publish}`);
     console.log('');
   }
@@ -55,6 +57,7 @@ try {
     console.log('     [A] Add repository');
     console.log('     [R] Remove authorization');
     console.log('     [P] Toggle GitHub publish');
+    console.log('     [S] Toggle package-script policy');
     console.log('     [C] Toggle coding-agent CLI');
     console.log('     [Q] Quit');
     console.log('');
@@ -81,6 +84,31 @@ try {
       if (!repo) throw new Error(`Unknown repository '${id}'.`);
       repo.permissions.publish = !repo.permissions.publish;
       await saveConfig(config);
+      continue;
+    }
+
+    if (answer === 's') {
+      const id = (await rl.question('  Repository ID: ')).trim();
+      const repo = config.repositories[id];
+      if (!repo) throw new Error(`Unknown repository '${id}'.`);
+      const current = repo.allowedPackageScripts ?? repo.allowedNpmScripts ?? [];
+      if (current.includes('*')) {
+        repo.allowedPackageScripts = await detectPackageScripts(repo.path);
+        delete repo.allowedNpmScripts;
+        console.log(`\n  [OK] ${id}: restored exact common-script allowlist (${repo.allowedPackageScripts.join(', ') || 'none'}).`);
+      } else {
+        const confirm = (await rl.question('  Allow ALL package.json scripts for this repository, including future additions? [y/N]: ')).trim().toLowerCase();
+        if (confirm !== 'y' && confirm !== 'yes') {
+          console.log('\n  [--] Package-script policy unchanged.');
+          await rl.question('\n  Press Enter to continue...');
+          continue;
+        }
+        repo.allowedPackageScripts = ['*'];
+        delete repo.allowedNpmScripts;
+        console.log(`\n  [OK] ${id}: all declared package scripts are locally authorized.`);
+      }
+      await saveConfig(config);
+      await rl.question('\n  Press Enter to continue...');
       continue;
     }
 

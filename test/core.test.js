@@ -12,6 +12,7 @@ import { registerRepository, resolveRepository } from '../src/repositories.js';
 import { createWorktree, resolveWorkspace } from '../src/workspaces.js';
 import { readWorkspaceFile, writeWorkspaceFile } from '../src/files.js';
 import { runProcess } from '../src/process.js';
+import { runAllowedPackageScript } from '../src/operations.js';
 
 async function git(args, cwd) {
   const result = await runGit(args, cwd);
@@ -99,6 +100,52 @@ test('bounded npm policy disables lifecycle scripts for dependency mutations', (
   assert.throws(() => validateNpmPackageSpec('https://example.com/pkg.tgz'), /Unsafe npm package spec/);
 });
 
+
+test('wildcard package-script policy runs any script declared by the authorized repository', async () => {
+  const repoPath = await makeRepo();
+  const pkgPath = path.join(repoPath, 'package.json');
+  const pkg = JSON.parse(await readFile(pkgPath, 'utf8'));
+  pkg.scripts['measure:prompts'] = 'node -e "process.stdout.write(\'measured\')"';
+  await writeFile(pkgPath, JSON.stringify(pkg, null, 2));
+  await git(['add', 'package.json'], repoPath);
+  await git(['commit', '-m', 'add metrics script'], repoPath);
+
+  const home = await mkdtemp(path.join(os.tmpdir(), 'wca-home-'));
+  const env = { ...process.env, WINDOWS_CODING_AGENT_HOME: home };
+  const config = emptyConfig();
+  const repo = await registerRepository(config, 'demo', repoPath, {
+    allowedPackageScripts: ['*'],
+    permissions: { publish: false },
+  });
+  assert.deepEqual(repo.allowedPackageScripts, ['*']);
+  await saveConfig(config, env);
+  const workspace = await createWorktree(config, 'demo', 'wildcard-script', null, env);
+
+  const result = await runAllowedPackageScript(config, workspace.workspaceId, 'measure:prompts', env);
+  assert.equal(result.ok, true, result.stderr || result.error);
+  assert.match(result.stdout, /measured/);
+  await assert.rejects(
+    () => runAllowedPackageScript(config, workspace.workspaceId, 'not-defined', env),
+    /not defined/,
+  );
+});
+
+test('exact package-script allowlist still rejects other declared scripts', async () => {
+  const repoPath = await makeRepo();
+  const home = await mkdtemp(path.join(os.tmpdir(), 'wca-home-'));
+  const env = { ...process.env, WINDOWS_CODING_AGENT_HOME: home };
+  const config = emptyConfig();
+  await registerRepository(config, 'demo', repoPath, {
+    allowedPackageScripts: ['test'],
+    permissions: { publish: false },
+  });
+  await saveConfig(config, env);
+  const workspace = await createWorktree(config, 'demo', 'exact-script', null, env);
+  await assert.rejects(
+    () => runAllowedPackageScript(config, workspace.workspaceId, 'build', env),
+    /not in the repository allowlist/,
+  );
+});
 
 test('coding-agent CLI configuration defaults to locally disabled', () => {
   const config = emptyConfig();

@@ -302,6 +302,14 @@ A registration contains local policy such as:
 
 Users normally do not edit this manually. `Setup.cmd` and `Start-Agent.cmd` maintain it.
 
+Package scripts are exact-allowlisted by default. For a repository you trust to define its own executable scripts, the local repository manager can opt into:
+
+```json
+"allowedPackageScripts": ["*"]
+```
+
+The wildcard is local policy, not an MCP bypass: `run_package_script` still requires `runScripts`, an isolated controller worktree, and an exact script name that exists in that repository's current `package.json`. Use **Start-Agent.cmd → S** to toggle this policy for an already authorized repository.
+
 Default location:
 
 ```text

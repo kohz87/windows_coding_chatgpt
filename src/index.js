@@ -11,7 +11,7 @@ import { runGit } from './git.js';
 import { repositoryStatus, repositoryRemoteStatus, runAllowedPackageScript, runAllowedNpmScript, runGitOperation, runNpmOperation, commitWorkspace, publishWorkspace } from './operations.js';
 import { agentCliStatus, runAgentCli } from './agent-cli.js';
 
-const VERSION = '0.1.8';
+const VERSION = '0.1.9';
 const text = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value });
 const fail = (error) => ({ isError: true, content: [{ type: 'text', text: error?.message ?? String(error) }] });
 const guarded = (fn) => async (args) => { try { return text(await fn(args)); } catch (error) { return fail(error); } };
