@@ -1,28 +1,14 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { runProcess } from './process.js';
 
-const execFileAsync = promisify(execFile);
 const DEFAULT_TIMEOUT = 120_000;
-const MAX_BUFFER = 20 * 1024 * 1024;
 
-export async function runGit(args, cwd, timeout = DEFAULT_TIMEOUT) {
-  try {
-    const { stdout, stderr } = await execFileAsync('git', args, {
-      cwd,
-      windowsHide: true,
-      timeout,
-      maxBuffer: MAX_BUFFER,
-    });
-    return { ok: true, exitCode: 0, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') };
-  } catch (error) {
-    return {
-      ok: false,
-      exitCode: typeof error.code === 'number' ? error.code : -1,
-      stdout: String(error.stdout ?? ''),
-      stderr: String(error.stderr ?? ''),
-      error: error.message,
-    };
-  }
+export async function runGit(args, cwd, timeout = DEFAULT_TIMEOUT, env = process.env) {
+  return runProcess(process.platform === 'win32' ? 'git.exe' : 'git', args, {
+    cwd,
+    windowsHide: true,
+    timeout,
+    env,
+  });
 }
 
 export async function requireGit(args, cwd, message = 'Git command failed.') {

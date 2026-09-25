@@ -63,6 +63,10 @@ try {
     }
   }
 
+  # Keep the v0.1.9 staging bridge synchronized with the current canonical launcher.
+  # Old updaters copy scripts/** but not the canonical Windows-Coding-Agent launchers.
+  Copy-Item -LiteralPath (Join-Path $repoRoot 'Windows-Coding-Agent.cmd') -Destination (Join-Path $bundleRoot 'scripts\compat-Windows-Coding-Agent.cmd') -Force
+  Copy-Item -LiteralPath (Join-Path $repoRoot 'Windows-Coding-Agent.ps1') -Destination (Join-Path $bundleRoot 'scripts\compat-Windows-Coding-Agent.ps1') -Force
   $commitText = if ([string]::IsNullOrWhiteSpace($Commit)) { 'unknown' } else { $Commit }
   @(
     "Windows Coding Agent v$version",

@@ -51,7 +51,6 @@ export async function runAllowedPackageScript(config, workspaceId, script, env =
   const result = await runProcess(command, ['run', script], {
     cwd: ws.path,
     timeout: 10 * 60_000,
-    maxBuffer: 20 * 1024 * 1024,
     env,
   });
   return {
@@ -112,7 +111,6 @@ export async function runNpmOperation(config, workspaceId, operation, options = 
   const result = await runProcess(command, args, {
     cwd: ws.path,
     timeout: 10 * 60_000,
-    maxBuffer: 20 * 1024 * 1024,
     env,
   });
   return {
@@ -204,7 +202,6 @@ export async function runPythonOperation(config, workspaceId, operation, env = p
     const result = await runProcess(basePython.path, args, {
       cwd: ws.path,
       timeout: 10 * 60_000,
-      maxBuffer: 20 * 1024 * 1024,
       env,
     });
     return {
@@ -225,7 +222,6 @@ export async function runPythonOperation(config, workspaceId, operation, env = p
   const result = await runProcess(venvPython, args, {
     cwd: ws.path,
     timeout: 10 * 60_000,
-    maxBuffer: 20 * 1024 * 1024,
     env,
   });
   return {

@@ -129,7 +129,6 @@ export async function runAgentCli(config, workspaceId, agent, prompt, options = 
   const result = await runProcess(entry.path, args, {
     cwd: ws.path,
     timeout: timeoutSeconds * 1000,
-    maxBuffer: 20 * 1024 * 1024,
     env,
     input,
   });

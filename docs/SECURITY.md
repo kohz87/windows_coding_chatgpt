@@ -187,3 +187,8 @@ Repository setup records a detected package manager (`npm`, `pnpm`, or `yarn`) a
 ## Python runtime boundary
 
 The MCP `python_operation` surface is intentionally narrower than a general Python shell. It can report runtime/project status, create a repository-local `.venv`, and run `pip check`, `pip list`, or `pip freeze` inside that environment. It does not expose arbitrary Python execution or `pip install`. Python package installation can execute package build hooks, so exposing unrestricted installs would undermine the controller's command boundary. Repositories that intentionally need installation commands can still place them behind their locally approved package-script workflow.
+
+
+## Process-output limits
+
+The controller caps captured stdout/stderr from local child processes to prevent runaway output from consuming unbounded memory. The local operator may choose a bounded preset of 20, 64, 128, or 256 MiB. This setting changes process capture only. MCP result payloads remain separately tail-limited, and the controller still terminates a process that exceeds the selected capture cap.

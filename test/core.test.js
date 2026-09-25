@@ -14,6 +14,7 @@ import { readWorkspaceFile, writeWorkspaceFile } from '../src/files.js';
 import { runProcess } from '../src/process.js';
 import { runAllowedPackageScript } from '../src/operations.js';
 import { VERSION } from '../src/version.js';
+import { getProcessOutputLimitBytes, normalizeProcessOutputLimitMb } from '../src/runtime-settings.js';
 
 async function git(args, cwd) {
   const result = await runGit(args, cwd);
@@ -37,6 +38,16 @@ async function makeRepo() {
 test('runtime version stays in sync with package.json', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(VERSION, packageJson.version);
+});
+
+test('runtime process output cap is configurable with bounded presets', async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'wca-runtime-settings-'));
+  const env = { ...process.env, WINDOWS_CODING_AGENT_HOME: home };
+  assert.equal(await getProcessOutputLimitBytes(env), 20 * 1024 * 1024);
+  await writeFile(path.join(home, 'runtime-settings.json'), JSON.stringify({ schemaVersion: 1, processOutputLimitMb: 128 }));
+  assert.equal(await getProcessOutputLimitBytes(env), 128 * 1024 * 1024);
+  assert.equal(normalizeProcessOutputLimitMb(64), 64);
+  assert.equal(normalizeProcessOutputLimitMb(999), 20);
 });
 
 test('GitHub remote parser accepts HTTPS and SSH', () => {
@@ -214,6 +225,7 @@ test('single human-facing launcher owns ChatGPT and repository management entry 
   const legacyShim = await readFile(new URL('../Connect-ChatGPT.ps1', import.meta.url), 'utf8');
   const updater = await readFile(new URL('../Update.ps1', import.meta.url), 'utf8');
   const server = await readFile(new URL('../src/index.js', import.meta.url), 'utf8');
+  const verifier = await readFile(new URL('../scripts/verify-release-package.ps1', import.meta.url), 'utf8');
 
   assert.match(launcher, /Windows-Coding-Agent\.ps1/);
   assert.match(control, /function Invoke-RepositoryManager/);
@@ -224,6 +236,8 @@ test('single human-facing launcher owns ChatGPT and repository management entry 
   assert.match(toolchain, /Windows-Coding-Agent\.cmd'\) -Mode 'Control'/);
   assert.doesNotMatch(packager, /Start-Agent\.cmd/);
   assert.match(packager, /Connect-ChatGPT\.ps1/);
+  assert.match(packager, /compat-Windows-Coding-Agent\.ps1/);
+  assert.match(packager, /compat-Windows-Coding-Agent\.cmd/);
   assert.match(legacyShim, /Windows-Coding-Agent\.ps1/);
   assert.doesNotMatch(legacyShim, /function Invoke-/);
   assert.match(updater, /candidateToolchain[\s\S]*\. \$candidateToolchain[\s\S]*Install-WcaManagedVersion/);
@@ -233,6 +247,9 @@ test('single human-facing launcher owns ChatGPT and repository management entry 
   assert.match(toolchain, /api\.nuget\.org\/v3\/index\.json/);
   assert.match(server, /python_operation/);
   assert.doesNotMatch(server, /python_operation[\s\S]{0,500}install_packages/);
+  assert.match(toolchain, /Copy-WcaDistribution[\s\S]*Connect-ChatGPT\.ps1/);
+  assert.match(verifier, /Install-WcaManagedVersion/);
+  assert.match(control, /Change process output cap/);
 });
 
 

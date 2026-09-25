@@ -42,6 +42,25 @@ try {
     powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bundle.FullName 'Windows-Coding-Agent.ps1') -SelfTest
   }
 
+  $previousHome = $env:WINDOWS_CODING_AGENT_HOME
+  $candidateHome = Join-Path $temporaryRoot 'candidate-managed-home'
+  try {
+    $env:WINDOWS_CODING_AGENT_HOME = $candidateHome
+    . (Join-Path $bundle.FullName 'Toolchain.ps1')
+    $managed = Install-WcaManagedVersion -SourceRoot $bundle.FullName -ForceActivate
+    if (-not $managed.active) { throw 'Candidate managed-install verification did not activate the candidate.' }
+    if (-not (Test-WcaManagedRoot $managed.path)) { throw 'Candidate managed-install verification produced an invalid managed root.' }
+    if ([string]$managed.version -ne [string](Get-WcaPackageVersion -SourceRoot $bundle.FullName)) {
+      throw 'Candidate managed-install verification activated the wrong version.'
+    }
+    Write-Host 'CANDIDATE MANAGED INSTALL VERIFY OK'
+  } finally {
+    if ($null -eq $previousHome) {
+      Remove-Item Env:WINDOWS_CODING_AGENT_HOME -ErrorAction SilentlyContinue
+    } else {
+      $env:WINDOWS_CODING_AGENT_HOME = $previousHome
+    }
+  }
   if ($LegacyV019) {
     $legacyStage = Join-Path $temporaryRoot 'legacy-v0.1.9-stage'
     New-Item -ItemType Directory -Force -Path $legacyStage | Out-Null

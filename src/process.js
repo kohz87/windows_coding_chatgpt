@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { getProcessOutputLimitBytes } from './runtime-settings.js';
 
 const BATCH_BRIDGE = [
   "$ErrorActionPreference = 'Stop'",
@@ -47,7 +48,7 @@ export async function runProcess(executable, args, options = {}) {
   const env = options.env ?? process.env;
   const bridged = commandFor(executable, args, env);
   const timeout = options.timeout ?? 120_000;
-  const maxBuffer = options.maxBuffer ?? 20 * 1024 * 1024;
+  const maxBuffer = options.maxBuffer ?? await getProcessOutputLimitBytes(env);
   const input = options.input ?? null;
 
   return new Promise((resolve) => {

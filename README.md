@@ -22,7 +22,8 @@ The important boundary is simple: **the human chooses repository directories loc
 - Optional locally enabled Codex CLI and Antigravity CLI (`agy`) runners, confined to isolated worktrees
 - User-scoped toolchain registry for Node.js, npm, npx, Git, PowerShell, WinGet, tunnel-client, Python, pip, `py`, pnpm, and yarn
 - Optional guided dependency installation and repair
-- Versioned managed installation with stable MCP bootstrap, self-heal, verified updates, and rollback
+- Configurable local process-output capture cap: 20, 64, 128, or 256 MiB
+- Versioned managed installation with stable MCP bootstrap, self-heal, verified updates, rollback, and preserved managed-install validation logs
 - Guarded local commits
 - Optional fast-forward-only publication to the configured GitHub repository
 - MCP stdio server for Codex and local MCP clients

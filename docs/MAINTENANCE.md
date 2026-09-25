@@ -22,6 +22,10 @@ Python 3.11+ is optional and first-class in the toolchain. Existing interpreters
 
 The dependency flow records non-secret executable paths, versions, status, and managed/system source information in `toolchain.json`.
 
+## Process output cap
+
+Local process capture defaults to 20 MiB. From **Maintenance / dependencies / updates** choose **Change process output cap** to select 20, 64, 128, or 256 MiB. The setting is stored in `runtime-settings.json` under the Windows Coding Agent home and is read for new process calls immediately. MCP responses still return bounded output tails, so raising the capture cap prevents long-running tools from being terminated without turning the chat response into an unbounded output stream.
+
 ## Self-heal
 
 Self-heal refreshes tool discovery, repairs the managed active installation and stable launchers, and can rewrite a stale tunnel profile to point at the stable MCP bootstrap once a usable tunnel runtime key is available.
@@ -49,6 +53,8 @@ The updater:
 7. runs launcher self-tests
 8. installs the candidate under the managed versions directory
 9. switches the active version only after validation succeeds
+
+The candidate release is also exercised through the same `Install-WcaManagedVersion` path used by the updater before release publication. Managed-install validation writes its full command transcript to `logs\last-managed-install.log` under the Windows Coding Agent home. If `npm ci`, `npm test`, source validation, or the launcher self-test fails, the error includes the last output plus the log path.
 
 ## Rollback
 

@@ -1041,6 +1041,37 @@ function Invoke-SelfHeal {
   Read-Host '  Press Enter to continue' | Out-Null
 }
 
+function Invoke-OutputLimitMenu {
+  while ($true) {
+    Show-Header -RightText 'Process output cap'
+    $settings = Get-WcaRuntimeSettings
+    Write-Status 'Current capture cap' ('[OK] ' + [string]$settings.processOutputLimitMb + ' MiB')
+    Write-Host ''
+    Write-Host '  This controls how much stdout/stderr a local process may emit'
+    Write-Host '  before the controller stops it. MCP responses remain tail-limited.'
+    Write-Host ''
+    Write-Host '     [1] 20 MiB   (default)'
+    Write-Host '     [2] 64 MiB'
+    Write-Host '     [3] 128 MiB'
+    Write-Host '     [4] 256 MiB'
+    Write-Host '     [B] Back'
+    Write-Host ''
+    $choice = Read-Choice '  Select' @('1','2','3','4','B')
+    if ($choice -eq 'B') { return }
+    $limit = switch ($choice) {
+      '1' { 20 }
+      '2' { 64 }
+      '3' { 128 }
+      '4' { 256 }
+    }
+    Set-WcaProcessOutputLimitMb -Megabytes $limit | Out-Null
+    Write-Host ''
+    Write-Host ('  [OK] Process output cap set to {0} MiB.' -f $limit) -ForegroundColor Green
+    Write-Host '  New MCP process calls use the setting immediately.'
+    Read-Host '  Press Enter to continue' | Out-Null
+  }
+}
+
 function Invoke-MaintenanceMenu {
   param($State)
 
@@ -1049,15 +1080,18 @@ function Invoke-MaintenanceMenu {
     $active = Get-WcaActiveInstallation
     Write-Status 'Active agent' $(if ($active) { '[OK] v' + [string]$active.activeVersion } else { '[--] not managed' })
     Write-Status 'Toolchain registry' $(if (Test-Path -LiteralPath (Get-WcaToolchainPath) -PathType Leaf) { '[OK]' } else { '[--] not scanned' })
+    $runtimeSettings = Get-WcaRuntimeSettings
+    Write-Status 'Process output cap' ('[OK] ' + [string]$runtimeSettings.processOutputLimitMb + ' MiB')
     Write-Host ''
     Write-Host '     [1] Scan / install dependencies'
     Write-Host '     [2] Self-heal paths, bootstrap, and tunnel profile'
     Write-Host '     [3] Check for / install Windows Coding Agent update'
     Write-Host '     [4] Roll back to last-known-good agent version'
     Write-Host '     [5] Show stable launcher directory'
+    Write-Host '     [6] Change process output cap'
     Write-Host '     [B] Back'
     Write-Host ''
-    $choice = Read-Choice '  Select' @('1','2','3','4','5','B')
+    $choice = Read-Choice '  Select' @('1','2','3','4','5','6','B')
     if ($choice -eq 'B') { return }
 
     $powershell = Resolve-WcaToolPath -Name powershell
@@ -1088,6 +1122,11 @@ function Invoke-MaintenanceMenu {
       Write-Host ''
       Write-Host ('  Stable launchers: {0}' -f (Split-Path -Parent (Get-WcaStableLauncherPath)))
       Read-Host '  Press Enter to continue' | Out-Null
+      continue
+    }
+    if ($choice -eq '6') {
+      Invoke-OutputLimitMenu
+      continue
     }
   }
 }

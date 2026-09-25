@@ -15,6 +15,7 @@ function Get-WcaAgentHome {
 }
 
 function Get-WcaToolchainPath { return (Join-Path (Get-WcaAgentHome) 'toolchain.json') }
+function Get-WcaRuntimeSettingsPath { return (Join-Path (Get-WcaAgentHome) 'runtime-settings.json') }
 function Get-WcaActiveVersionPath { return (Join-Path (Get-WcaAgentHome) 'active-version.json') }
 function Get-WcaVersionsRoot { return (Join-Path (Get-WcaAgentHome) 'versions') }
 function Get-WcaStableMcpBootstrapPath { return (Join-Path (Get-WcaAgentHome) 'bootstrap\mcp-loader.mjs') }
@@ -58,6 +59,28 @@ function Write-WcaJsonFile {
   Move-Item -LiteralPath $temporary -Destination $Path -Force
 }
 
+function Get-WcaRuntimeSettings {
+  $state = Read-WcaJsonFile -Path (Get-WcaRuntimeSettingsPath)
+  $limit = 20
+  if ($state -and $state.schemaVersion -eq 1) {
+    try { $candidate = [int]$state.processOutputLimitMb } catch { $candidate = 20 }
+    if ($candidate -in @(20,64,128,256)) { $limit = $candidate }
+  }
+  return [pscustomobject]@{
+    schemaVersion = 1
+    processOutputLimitMb = $limit
+  }
+}
+
+function Set-WcaProcessOutputLimitMb {
+  param([ValidateSet(20,64,128,256)][int]$Megabytes)
+  $state = [ordered]@{
+    schemaVersion = 1
+    processOutputLimitMb = $Megabytes
+  }
+  Write-WcaJsonFile -Path (Get-WcaRuntimeSettingsPath) -Value $state
+  return [pscustomobject]$state
+}
 function Get-WcaPackageVersion {
   param([string]$SourceRoot)
   $packagePath = Join-Path $SourceRoot 'package.json'
@@ -633,7 +656,7 @@ function Copy-WcaDistribution {
   New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
   $items = @(
     'src','docs','test','bootstrap','scripts',
-    'Windows-Coding-Agent.cmd','Windows-Coding-Agent.ps1','Setup.cmd',
+    'Windows-Coding-Agent.cmd','Windows-Coding-Agent.ps1','Connect-ChatGPT.ps1','Setup.cmd',
     'Doctor.cmd','Update.cmd','Update.ps1','Install-Dependencies.cmd','Install-Dependencies.ps1',
     'Toolchain.ps1','config.example.json','package.json','package-lock.json','README.md','LICENSE','AGENTS.md'
   )
@@ -645,34 +668,59 @@ function Copy-WcaDistribution {
   }
 }
 
+function Get-WcaManagedInstallLogPath {
+  $logRoot = Join-Path (Get-WcaAgentHome) 'logs'
+  New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
+  return (Join-Path $logRoot 'last-managed-install.log')
+}
+
+function Invoke-WcaLoggedExternal {
+  param(
+    [Parameter(Mandatory = $true)][string]$Label,
+    [Parameter(Mandatory = $true)][string]$Executable,
+    [string[]]$Arguments = @(),
+    [Parameter(Mandatory = $true)][string]$LogPath
+  )
+
+  Add-Content -LiteralPath $LogPath -Value ([Environment]::NewLine + ('=== {0} ===' -f $Label))
+  & $Executable @Arguments 2>&1 | Tee-Object -FilePath $LogPath -Append | ForEach-Object { Write-Host $_ }
+  $exitCode = $LASTEXITCODE
+  if ($exitCode -ne 0) {
+    $tail = @()
+    try { $tail = @(Get-Content -LiteralPath $LogPath -Tail 80 -ErrorAction Stop) } catch {}
+    $tailText = ($tail -join [Environment]::NewLine)
+    $detail = if ([string]::IsNullOrWhiteSpace($tailText)) { '' } else { [Environment]::NewLine + 'Last output:' + [Environment]::NewLine + $tailText }
+    throw ('{0} failed with exit code {1}.{2}{3}Full log: {4}' -f $Label, $exitCode, $detail, [Environment]::NewLine, $LogPath)
+  }
+}
+
 function Invoke-WcaDistributionValidation {
   param([string]$Root)
   $npm = Resolve-WcaToolPath -Name npm
   $powershell = Resolve-WcaToolPath -Name powershell
   if (-not $npm -or -not $powershell) { throw 'Node.js, npm, and Windows PowerShell are required to validate an agent installation.' }
 
+  $logPath = Get-WcaManagedInstallLogPath
+  Set-Content -LiteralPath $logPath -Value ('Windows Coding Agent managed-install validation' + [Environment]::NewLine + ('Root: {0}' -f $Root) + [Environment]::NewLine + ('Started: {0}' -f (Get-Date).ToUniversalTime().ToString('o'))) -Encoding UTF8
+
   Push-Location $Root
   try {
     Write-Host '  Installing locked runtime dependencies...'
-    & $npm ci --ignore-scripts
-    if ($LASTEXITCODE -ne 0) { throw 'npm ci failed while preparing the managed installation.' }
+    Invoke-WcaLoggedExternal -Label 'npm ci' -Executable $npm -Arguments @('ci','--ignore-scripts') -LogPath $logPath
 
     Write-Host '  Running package tests...'
-    & $npm test
-    if ($LASTEXITCODE -ne 0) { throw 'npm test failed for the managed installation.' }
+    Invoke-WcaLoggedExternal -Label 'npm test' -Executable $npm -Arguments @('test') -LogPath $logPath
 
     Write-Host '  Validating source...'
-    & $npm run validate
-    if ($LASTEXITCODE -ne 0) { throw 'npm run validate failed for the managed installation.' }
+    Invoke-WcaLoggedExternal -Label 'npm run validate' -Executable $npm -Arguments @('run','validate') -LogPath $logPath
 
     Write-Host '  Running Windows launcher self-test...'
-    & $powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'Windows-Coding-Agent.ps1') -SelfTest
-    if ($LASTEXITCODE -ne 0) { throw 'Windows-Coding-Agent control-panel self-test failed for the managed installation.' }
+    Invoke-WcaLoggedExternal -Label 'Windows-Coding-Agent self-test' -Executable $powershell -Arguments @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $Root 'Windows-Coding-Agent.ps1'),'-SelfTest') -LogPath $logPath
+    Add-Content -LiteralPath $logPath -Value ([Environment]::NewLine + ('Validation completed: {0}' -f (Get-Date).ToUniversalTime().ToString('o')))
   } finally {
     Pop-Location
   }
 }
-
 function Install-WcaManagedVersion {
   param(
     [Parameter(Mandatory = $true)][string]$SourceRoot,
@@ -751,6 +799,8 @@ function Invoke-WcaToolchainSelfTest {
     if (-not (Test-Path -LiteralPath (Get-WcaStableLauncherPath) -PathType Leaf)) { throw 'Stable launcher self-test failed.' }
     if (-not (Test-WcaApplicationControlMessage 'An Application Control policy has blocked this file')) { throw 'Application Control detection failed.' }
     if (Test-WcaPathInsideVersions 'C:\Windows\System32') { throw 'Managed path containment accepted an external path.' }
+    Set-WcaProcessOutputLimitMb -Megabytes 64 | Out-Null
+    if ((Get-WcaRuntimeSettings).processOutputLimitMb -ne 64) { throw 'Runtime output-limit setting did not persist.' }
     if (-not (Test-WcaPythonSupported 'Python 3.11.0')) { throw 'Python minimum-version check rejected Python 3.11.' }
     if (Test-WcaPythonSupported 'Python 3.10.14') { throw 'Python minimum-version check accepted Python 3.10.' }
     $pythonPackage = Get-WcaManagedPythonPackageName
