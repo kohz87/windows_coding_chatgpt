@@ -45,7 +45,7 @@ jobs:
       - name: Validate maintenance and ChatGPT wizard
         shell: powershell
         run: |
-          foreach ($script in @('.\Connect-ChatGPT.ps1','.\Toolchain.ps1','.\Install-Dependencies.ps1','.\Update.ps1','.\bootstrap\launch.ps1')) {
+          foreach ($script in @('.\Windows-Coding-Agent.ps1','.\Toolchain.ps1','.\Install-Dependencies.ps1','.\Update.ps1','.\bootstrap\launch.ps1')) {
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script), [ref]$null, [ref]$errors) | Out-Null
             if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error "$script : $($_.Message)" }; exit 1 }
@@ -63,9 +63,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -NoProfile -ExecutionPolicy Bypass -File .\Update.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -ExecutionPolicy Bypass -File .\Connect-ChatGPT.ps1 -SelfTest
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\Windows-Coding-Agent.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -ExecutionPolicy Bypass -File .\Connect-ChatGPT.ps1 -ShowInstructions -TunnelId tunnel_release_test
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\Windows-Coding-Agent.ps1 -ShowInstructions -TunnelId tunnel_release_test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Resolve release version
