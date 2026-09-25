@@ -196,6 +196,8 @@ test('single human-facing launcher owns ChatGPT and repository management entry 
   const bootstrap = await readFile(new URL('../bootstrap/launch.ps1', import.meta.url), 'utf8');
   const toolchain = await readFile(new URL('../Toolchain.ps1', import.meta.url), 'utf8');
   const packager = await readFile(new URL('../scripts/package-release.ps1', import.meta.url), 'utf8');
+  const legacyShim = await readFile(new URL('../Connect-ChatGPT.ps1', import.meta.url), 'utf8');
+  const updater = await readFile(new URL('../Update.ps1', import.meta.url), 'utf8');
 
   assert.match(launcher, /Windows-Coding-Agent\.ps1/);
   assert.match(control, /function Invoke-RepositoryManager/);
@@ -204,7 +206,11 @@ test('single human-facing launcher owns ChatGPT and repository management entry 
   assert.match(bootstrap, /'Manage'.*-Open Repositories/);
   assert.match(toolchain, /Get-WcaStableLauncherPath[\s\S]*Windows-Coding-Agent\.cmd/);
   assert.match(toolchain, /Windows-Coding-Agent\.cmd'\) -Mode 'Control'/);
-  assert.doesNotMatch(packager, /Start-Agent\.cmd|Connect-ChatGPT/);
+  assert.doesNotMatch(packager, /Start-Agent\.cmd/);
+  assert.match(packager, /Connect-ChatGPT\.ps1/);
+  assert.match(legacyShim, /Windows-Coding-Agent\.ps1/);
+  assert.doesNotMatch(legacyShim, /function Invoke-/);
+  assert.match(updater, /candidateToolchain[\s\S]*\. \$candidateToolchain[\s\S]*Install-WcaManagedVersion/);
 });
 
 

@@ -98,6 +98,13 @@ jobs:
         shell: pwsh
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1 -OutputDirectory dist -Commit $env:GITHUB_SHA
 
+      - name: Verify release ZIP including v0.1.9 upgrade bridge
+        if: steps.release.outputs.exists != 'true'
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-release-package.ps1 -ZipPath $env:ZIP -LegacyV019
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Create GitHub release
         if: steps.release.outputs.exists != 'true'
         shell: pwsh

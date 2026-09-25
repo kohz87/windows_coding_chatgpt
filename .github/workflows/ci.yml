@@ -89,3 +89,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bundle.FullName 'Windows-Coding-Agent.ps1') -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify release ZIP including v0.1.9 upgrade bridge
+        shell: powershell
+        run: |
+          $zip = Get-ChildItem dist -Filter 'Windows-Coding-Agent-v*.zip' | Select-Object -First 1
+          if (-not $zip) { throw 'Release ZIP was not created.' }
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-release-package.ps1 -ZipPath $zip.FullName -LegacyV019
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

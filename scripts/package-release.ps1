@@ -34,6 +34,7 @@ try {
     'Setup.cmd',
     'Windows-Coding-Agent.cmd',
     'Windows-Coding-Agent.ps1',
+    'Connect-ChatGPT.ps1',
     'Toolchain.ps1',
     'Install-Dependencies.cmd',
     'Install-Dependencies.ps1',
@@ -81,6 +82,11 @@ try {
   }
 
   "$hash  $bundleName.zip" | Set-Content -Path $checksumPath -Encoding ascii
+
+  $verifier = Join-Path $repoRoot 'scripts\verify-release-package.ps1'
+  if (-not (Test-Path -LiteralPath $verifier -PathType Leaf)) { throw 'Release verifier is missing.' }
+  & powershell -NoProfile -ExecutionPolicy Bypass -File $verifier -ZipPath $zipPath -LegacyV019
+  if ($LASTEXITCODE -ne 0) { throw 'Release package verification failed.' }
 
   Write-Host "Created $zipPath"
   Write-Host "SHA-256 $hash"

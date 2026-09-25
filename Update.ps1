@@ -129,6 +129,9 @@ try {
   if (-not $bundle) { throw 'The verified release ZIP did not contain the expected Windows Coding Agent package.' }
 
   Write-Host '  Validating candidate before activation...'
+  $candidateToolchain = Join-Path $bundle 'Toolchain.ps1'
+  if (-not (Test-Path -LiteralPath $candidateToolchain -PathType Leaf)) { throw 'The verified release is missing Toolchain.ps1.' }
+  . $candidateToolchain
   $installed = Install-WcaManagedVersion -SourceRoot $bundle -ForceActivate
   Refresh-WcaToolchain | Out-Null
   Write-Host ''
