@@ -175,10 +175,15 @@ v0.1.5 separates the stable local control plane from any extracted release direc
 
 `toolchain.json` contains discovered executable paths, versions, status information, and timestamps. It is not a credential store. Runtime API keys remain separately DPAPI-protected when secure persistence is enabled.
 
-Dependency installation is an explicit local operation. Node.js LTS and Git may be installed through WinGet after user confirmation. Automatic tunnel-client installation is restricted to the official OpenAI GitHub release and requires SHA-256 verification before extraction. The code may remove the ordinary Internet-zone marker only from that verified official download; it does not disable or bypass Windows Application Control, WDAC, AppLocker, or Smart App Control.
+Dependency installation is an explicit local operation. Node.js LTS and Git may be installed through WinGet after user confirmation. Automatic tunnel-client installation is restricted to the official OpenAI GitHub release and requires SHA-256 verification before extraction. Optional managed Python is installed only after local selection, stays under the user-scoped Windows Coding Agent tools directory, and never modifies global PATH. The installer verifies the Microsoft Authenticode signature on the downloaded NuGet client and the Python Software Foundation signature on the resulting `python.exe`, then validates `pip` and `venv`. The code may remove ordinary Internet-zone markers only from downloads that pass the relevant validation; it does not disable or bypass Windows Application Control, WDAC, AppLocker, or Smart App Control.
 
 Agent updates are also local human-approved maintenance operations. The updater downloads a versioned GitHub release asset, verifies SHA-256, stages the candidate, installs locked dependencies with `npm ci --ignore-scripts`, runs tests and validation, and only then changes the active-version pointer. Failed candidates do not replace the current active version. The MCP surface deliberately does not expose an unrestricted self-update or dependency-install command to a remote ChatGPT session.
 
 ## Package managers
 
 Repository setup records a detected package manager (`npm`, `pnpm`, or `yarn`) and an allowlist of package scripts. The MCP can invoke only those allowlisted scripts. Package-manager detection does not create an arbitrary shell capability, and optional package managers are installed only through local maintenance flows.
+
+
+## Python runtime boundary
+
+The MCP `python_operation` surface is intentionally narrower than a general Python shell. It can report runtime/project status, create a repository-local `.venv`, and run `pip check`, `pip list`, or `pip freeze` inside that environment. It does not expose arbitrary Python execution or `pip install`. Python package installation can execute package build hooks, so exposing unrestricted installs would undermine the controller's command boundary. Repositories that intentionally need installation commands can still place them behind their locally approved package-script workflow.

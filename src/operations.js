@@ -1,9 +1,11 @@
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runGit, githubRemoteMatches } from './git.js';
-import { buildGitOperationArgs, buildNpmOperationArgs } from './command-policy.js';
+import { buildGitOperationArgs, buildNpmOperationArgs, buildPythonOperationArgs } from './command-policy.js';
 import { resolveWorkspace } from './workspaces.js';
 import { runProcess } from './process.js';
+import { securePath } from './security.js';
+import { getToolchainPath } from './paths.js';
 
 export async function repositoryStatus(repo) {
   const [branch, head, status] = await Promise.all([
@@ -117,6 +119,120 @@ export async function runNpmOperation(config, workspaceId, operation, options = 
     ok: result.ok,
     operation,
     args,
+    exitCode: result.exitCode,
+    stdout: result.stdout.slice(-100_000),
+    stderr: result.stderr.slice(-50_000),
+    error: result.error,
+  };
+}
+
+async function readToolchain(env = process.env) {
+  try {
+    return JSON.parse(await readFile(getToolchainPath(env), 'utf8'));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw new Error(`Could not read the Windows Coding Agent toolchain registry: ${error?.message ?? error}`);
+  }
+}
+
+async function resolveRegisteredPython(env = process.env) {
+  const toolchain = await readToolchain(env);
+  const python = toolchain?.tools?.python;
+  if (!python || python.status !== 'ok' || typeof python.path !== 'string' || !python.path.trim()) {
+    throw new Error('Python 3.11+ is not registered. Run Windows Coding Agent Dependencies and install or select Python first.');
+  }
+  await access(python.path);
+  return {
+    path: python.path,
+    version: typeof python.version === 'string' ? python.version : '',
+    source: typeof python.source === 'string' ? python.source : '',
+  };
+}
+
+async function pathExists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+async function detectPythonProjectMarkers(workspacePath) {
+  const markers = ['pyproject.toml', 'requirements.txt', 'setup.py', 'Pipfile'];
+  const result = {};
+  for (const marker of markers) result[marker] = await pathExists(path.join(workspacePath, marker));
+  return result;
+}
+
+export async function runPythonOperation(config, workspaceId, operation, env = process.env) {
+  const ws = await resolveWorkspace(config, workspaceId, env);
+  if (!ws.repository.permissions.runScripts) throw new Error('Python operations are disabled because script execution is disabled for this repository.');
+
+  const basePython = await resolveRegisteredPython(env);
+  const markers = await detectPythonProjectMarkers(ws.path);
+
+  if (operation === 'status') {
+    const versionArgs = buildPythonOperationArgs('status');
+    const [version, pip] = await Promise.all([
+      runProcess(basePython.path, versionArgs, { cwd: ws.path, timeout: 60_000, env }),
+      runProcess(basePython.path, ['-I', '-m', 'pip', '--version'], { cwd: ws.path, timeout: 60_000, env }),
+    ]);
+    const venvPath = await securePath(ws.path, '.venv', { allowMissingLeaf: true });
+    return {
+      ok: version.ok,
+      operation,
+      python: {
+        path: basePython.path,
+        version: version.stdout.trim() || version.stderr.trim() || basePython.version,
+        source: basePython.source,
+      },
+      pip: {
+        ok: pip.ok,
+        version: pip.stdout.trim() || pip.stderr.trim(),
+      },
+      venvPresent: await pathExists(venvPath),
+      projectMarkers: markers,
+    };
+  }
+
+  if (operation === 'create_venv') {
+    const venvPath = await securePath(ws.path, '.venv', { allowMissingLeaf: true });
+    if (await pathExists(venvPath)) throw new Error('A .venv already exists in this isolated worktree; refusing to replace it.');
+    const args = buildPythonOperationArgs(operation);
+    const result = await runProcess(basePython.path, args, {
+      cwd: ws.path,
+      timeout: 10 * 60_000,
+      maxBuffer: 20 * 1024 * 1024,
+      env,
+    });
+    return {
+      ok: result.ok,
+      operation,
+      args,
+      pythonPath: basePython.path,
+      venv: '.venv',
+      exitCode: result.exitCode,
+      stdout: result.stdout.slice(-100_000),
+      stderr: result.stderr.slice(-50_000),
+      error: result.error,
+    };
+  }
+
+  const venvPython = await securePath(ws.path, '.venv/Scripts/python.exe');
+  const args = buildPythonOperationArgs(operation);
+  const result = await runProcess(venvPython, args, {
+    cwd: ws.path,
+    timeout: 10 * 60_000,
+    maxBuffer: 20 * 1024 * 1024,
+    env,
+  });
+  return {
+    ok: result.ok,
+    operation,
+    args,
+    pythonPath: venvPython,
     exitCode: result.exitCode,
     stdout: result.stdout.slice(-100_000),
     stderr: result.stderr.slice(-50_000),

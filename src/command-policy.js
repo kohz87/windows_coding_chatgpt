@@ -25,6 +25,14 @@ export const SAFE_GIT_OPERATIONS = Object.freeze([
   'revert_abort',
 ]);
 
+export const SAFE_PYTHON_OPERATIONS = Object.freeze([
+  'status',
+  'create_venv',
+  'pip_check',
+  'pip_list',
+  'freeze',
+]);
+
 export const SAFE_NPM_OPERATIONS = Object.freeze([
   'ci',
   'install',
@@ -190,5 +198,25 @@ export function buildNpmOperationArgs(operation, options = {}) {
     }
     default:
       throw new Error(`Unsupported npm operation '${operation}'.`);
+  }
+}
+
+
+export function buildPythonOperationArgs(operation) {
+  if (!SAFE_PYTHON_OPERATIONS.includes(operation)) throw new Error(`Unsupported Python operation '${operation}'.`);
+
+  switch (operation) {
+    case 'status':
+      return ['--version'];
+    case 'create_venv':
+      return ['-I', '-m', 'venv', '.venv'];
+    case 'pip_check':
+      return ['-I', '-m', 'pip', '--disable-pip-version-check', 'check'];
+    case 'pip_list':
+      return ['-I', '-m', 'pip', '--disable-pip-version-check', 'list', '--format=json'];
+    case 'freeze':
+      return ['-I', '-m', 'pip', '--disable-pip-version-check', 'freeze', '--all'];
+    default:
+      throw new Error(`Unsupported Python operation '${operation}'.`);
   }
 }

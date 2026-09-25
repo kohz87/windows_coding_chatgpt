@@ -16,9 +16,11 @@ Run:
 Install-Dependencies.cmd
 ```
 
-Required tools are Node.js 20+, npm, npx, and Git. ChatGPT setup additionally requires the OpenAI tunnel client. Node.js LTS and Git can be installed through WinGet with explicit confirmation. The tunnel client can be installed from the verified official OpenAI GitHub release. pnpm and yarn are optional.
+Required tools are Node.js 20+, npm, npx, and Git. ChatGPT setup additionally requires the OpenAI tunnel client. Node.js LTS and Git can be installed through WinGet with explicit confirmation. The tunnel client can be installed from the verified official OpenAI GitHub release.
 
-The dependency flow records non-secret executable paths and versions in `toolchain.json`.
+Python 3.11+ is optional and first-class in the toolchain. Existing interpreters are discovered automatically; choosing **Install managed Python** installs pinned CPython 3.12.10 under the Windows Coding Agent tools directory without changing PATH. `Install-Dependencies.ps1 -ManagedPython` provides the same non-interactive managed-runtime install. The runtime includes validated `pip` and `venv` support. pnpm and yarn remain optional.
+
+The dependency flow records non-secret executable paths, versions, status, and managed/system source information in `toolchain.json`.
 
 ## Self-heal
 

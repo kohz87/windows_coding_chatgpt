@@ -18,8 +18,9 @@ The important boundary is simple: **the human chooses repository directories loc
 - Per-repository package-manager detection (npm, pnpm, or yarn) with locally allowlisted scripts
 - Bounded worktree Git operations for inspection, fetch/ff-only pull, restore, and no-commit cherry-pick/revert
 - Bounded npm dependency/query operations with lifecycle scripts disabled for dependency mutation
+- Optional Python 3.11+ runtime support with project-marker detection, repo-local `.venv` creation, and bounded `pip check/list/freeze` operations
 - Optional locally enabled Codex CLI and Antigravity CLI (`agy`) runners, confined to isolated worktrees
-- User-scoped toolchain registry for Node.js, npm, npx, Git, PowerShell, WinGet, tunnel-client, pnpm, and yarn
+- User-scoped toolchain registry for Node.js, npm, npx, Git, PowerShell, WinGet, tunnel-client, Python, pip, `py`, pnpm, and yarn
 - Optional guided dependency installation and repair
 - Versioned managed installation with stable MCP bootstrap, self-heal, verified updates, and rollback
 - Guarded local commits
@@ -46,6 +47,8 @@ Required:
 - at least one local Git repository
 
 `Setup.cmd` checks for Node.js 20+, npm, npx, and Git. If a required tool is missing it can offer to install or repair Node.js LTS and Git through WinGet. npm and npx are treated as part of the Node.js runtime family and are verified separately.
+
+Python is optional. The dependency manager discovers existing Python 3.11+ installations through `python`, `python3`, or `py`, and can install a controller-managed CPython 3.12.10 runtime under `%USERPROFILE%\.windows-coding-agent\tools\python\3.12.10\` without changing global PATH. The managed runtime is installed from the official CPython NuGet package using a Microsoft-signed NuGet client, and `python.exe`, `pip`, and `venv` are validated before registration.
 
 For ChatGPT access:
 

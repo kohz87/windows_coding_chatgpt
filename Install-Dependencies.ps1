@@ -2,6 +2,7 @@ param(
   [switch]$ForChatGPT,
   [switch]$RequiredOnly,
   [switch]$ScanOnly,
+  [switch]$ManagedPython,
   [switch]$Yes,
   [switch]$SelfTest
 )
@@ -41,12 +42,19 @@ function Write-DependencyStatus {
   param([string]$Label, $Tool)
   if ($Tool -and $Tool.status -eq 'ok') {
     $detail = if ([string]::IsNullOrWhiteSpace([string]$Tool.version)) { '[OK]' } else { '[OK] ' + [string]$Tool.version }
+    if (-not [string]::IsNullOrWhiteSpace([string]$Tool.source)) { $detail += ' (' + [string]$Tool.source + ')' }
     Write-Host ('  {0,-34} {1}' -f $Label, $detail)
   } elseif ($Tool -and $Tool.status -eq 'blocked') {
     Write-Host ('  {0,-34} [X] blocked by Windows' -f $Label) -ForegroundColor Red
   } else {
     Write-Host ('  {0,-34} [X] not found' -f $Label) -ForegroundColor Yellow
   }
+}
+
+function Test-PythonDependencyReady {
+  param($Snapshot)
+  $python = Get-DependencyTool -Snapshot $Snapshot -Name 'python'
+  return (Test-DependencyReady $Snapshot 'python') -and (Test-WcaPythonSupported ([string]$python.version))
 }
 
 function Get-MissingRequired {
@@ -75,6 +83,8 @@ function Install-OneDependency {
 if ($SelfTest) {
   if (-not (Test-WcaApplicationControlMessage 'Application Control policy has blocked this file')) { throw 'Application Control classifier failed.' }
   if (-not (Test-Path -LiteralPath (Join-Path $root 'Toolchain.ps1') -PathType Leaf)) { throw 'Toolchain.ps1 is missing.' }
+  if (-not (Test-WcaPythonSupported 'Python 3.11.0')) { throw 'Python dependency policy rejected Python 3.11.' }
+  if (Test-WcaPythonSupported 'Python 3.10.14') { throw 'Python dependency policy accepted Python 3.10.' }
   Write-Host 'DEPENDENCY SELFTEST OK'
   exit 0
 }
@@ -90,6 +100,19 @@ Write-DependencyStatus 'Git' (Get-DependencyTool $snapshot 'git')
 if ($ForChatGPT) { Write-DependencyStatus 'OpenAI tunnel-client' (Get-DependencyTool $snapshot 'tunnelClient') }
 Write-Host ''
 if (-not $RequiredOnly) {
+  Write-Host '  Managed runtimes'
+  Write-Host ''
+  $pythonTool = Get-DependencyTool $snapshot 'python'
+  if (Test-PythonDependencyReady $snapshot) {
+    Write-DependencyStatus 'Python 3.11+' $pythonTool
+  } elseif ($pythonTool -and $pythonTool.status -eq 'ok') {
+    Write-Host ('  {0,-34} [X] unsupported {1}' -f 'Python 3.11+', [string]$pythonTool.version) -ForegroundColor Yellow
+  } else {
+    Write-DependencyStatus 'Python 3.11+' $pythonTool
+  }
+  Write-DependencyStatus 'pip' (Get-DependencyTool $snapshot 'pip')
+  Write-DependencyStatus 'Python launcher (py)' (Get-DependencyTool $snapshot 'py')
+  Write-Host ''
   Write-Host '  Optional package managers'
   Write-Host ''
   Write-DependencyStatus 'pnpm' (Get-DependencyTool $snapshot 'pnpm')
@@ -135,28 +158,46 @@ if ($missing.Count -gt 0) {
   }
 }
 
+if (-not $RequiredOnly -and $ManagedPython) {
+  Install-WcaManagedPython | Out-Null
+  $snapshot = Get-DependencySnapshot
+}
+
 if (-not $RequiredOnly -and -not $Yes) {
   while ($true) {
     $snapshot = Get-DependencySnapshot
     $pnpmReady = Test-DependencyReady $snapshot 'pnpm'
     $yarnReady = Test-DependencyReady $snapshot 'yarn'
-    if ($pnpmReady -and $yarnReady) { break }
+    $pythonReady = Test-PythonDependencyReady $snapshot
+    $pythonTool = Get-DependencyTool $snapshot 'python'
+    $pythonManaged = $pythonReady -and ([string]$pythonTool.source -eq 'managed')
+    if ($pnpmReady -and $yarnReady -and $pythonManaged) { break }
 
     Show-DependencyHeader
     Write-Host '  Required dependencies are ready.'
     Write-Host ''
-    Write-Host '  Optional package managers are installed only when you ask.'
+    Write-Host '  Optional tools are installed only when you ask.'
+    Write-Host '  Managed Python stays under .windows-coding-agent and does not change PATH.'
     Write-Host ''
+    if (-not $pythonManaged) {
+      if ($pythonReady) {
+        Write-Host ('     [M] Install managed Python {0} alongside existing Python' -f $script:WcaManagedPythonVersion)
+      } else {
+        Write-Host ('     [M] Install managed Python {0}' -f $script:WcaManagedPythonVersion)
+      }
+    }
     if (-not $pnpmReady) { Write-Host '     [P] Install pnpm with npm' }
     if (-not $yarnReady) { Write-Host '     [Y] Install yarn with npm' }
     Write-Host '     [S] Skip optional tools'
     Write-Host ''
     $allowed = @('S')
+    if (-not $pythonManaged) { $allowed += 'M' }
     if (-not $pnpmReady) { $allowed += 'P' }
     if (-not $yarnReady) { $allowed += 'Y' }
     $choice = (Read-Host '  Select').Trim().ToUpperInvariant()
     if ($allowed -notcontains $choice) { continue }
     if ($choice -eq 'S') { break }
+    if ($choice -eq 'M') { Install-WcaManagedPython | Out-Null }
     if ($choice -eq 'P') { Install-WcaOptionalPackageManager -Name pnpm }
     if ($choice -eq 'Y') { Install-WcaOptionalPackageManager -Name yarn }
   }

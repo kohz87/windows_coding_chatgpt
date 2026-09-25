@@ -20,6 +20,14 @@ if ([System.IO.Path]::IsPathRooted($OutputDirectory)) {
 }
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 
+$managedPythonTest = Join-Path $repoRoot 'scripts\test-managed-python.ps1'
+if (-not (Test-Path -LiteralPath $managedPythonTest -PathType Leaf)) { throw 'Managed Python integration test is missing.' }
+& powershell -NoProfile -ExecutionPolicy Bypass -File $managedPythonTest
+if ($LASTEXITCODE -ne 0) { throw 'Managed Python integration test failed.' }
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot 'Install-Dependencies.ps1') -SelfTest
+if ($LASTEXITCODE -ne 0) { throw 'Dependency self-test failed.' }
+
 $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("windows-coding-agent-package-" + [guid]::NewGuid().ToString('N'))
 $bundleRoot = Join-Path $temporaryRoot $bundleName
 New-Item -ItemType Directory -Force -Path $bundleRoot | Out-Null

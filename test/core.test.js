@@ -5,7 +5,7 @@ import path from 'node:path';
 import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
 import { validateRelativePath } from '../src/security.js';
 import { parseGitHubRemote, runGit } from '../src/git.js';
-import { buildGitOperationArgs, buildNpmOperationArgs, validateNpmPackageSpec } from '../src/command-policy.js';
+import { buildGitOperationArgs, buildNpmOperationArgs, buildPythonOperationArgs, validateNpmPackageSpec } from '../src/command-policy.js';
 import { buildAgentArgs, validateAgentName } from '../src/agent-cli.js';
 import { emptyConfig, loadConfig, saveConfig } from '../src/config.js';
 import { registerRepository, resolveRepository } from '../src/repositories.js';
@@ -107,6 +107,15 @@ test('bounded npm policy disables lifecycle scripts for dependency mutations', (
 });
 
 
+test('bounded Python policy supports isolated venv inspection without package installation', () => {
+  assert.deepEqual(buildPythonOperationArgs('status'), ['--version']);
+  assert.deepEqual(buildPythonOperationArgs('create_venv'), ['-I', '-m', 'venv', '.venv']);
+  assert.deepEqual(buildPythonOperationArgs('pip_check'), ['-I', '-m', 'pip', '--disable-pip-version-check', 'check']);
+  assert.deepEqual(buildPythonOperationArgs('pip_list'), ['-I', '-m', 'pip', '--disable-pip-version-check', 'list', '--format=json']);
+  assert.deepEqual(buildPythonOperationArgs('freeze'), ['-I', '-m', 'pip', '--disable-pip-version-check', 'freeze', '--all']);
+  assert.throws(() => buildPythonOperationArgs('install_packages'), /Unsupported Python operation/);
+});
+
 test('wildcard package-script policy runs any script declared by the authorized repository', async () => {
   const repoPath = await makeRepo();
   const pkgPath = path.join(repoPath, 'package.json');
@@ -204,6 +213,7 @@ test('single human-facing launcher owns ChatGPT and repository management entry 
   const packager = await readFile(new URL('../scripts/package-release.ps1', import.meta.url), 'utf8');
   const legacyShim = await readFile(new URL('../Connect-ChatGPT.ps1', import.meta.url), 'utf8');
   const updater = await readFile(new URL('../Update.ps1', import.meta.url), 'utf8');
+  const server = await readFile(new URL('../src/index.js', import.meta.url), 'utf8');
 
   assert.match(launcher, /Windows-Coding-Agent\.ps1/);
   assert.match(control, /function Invoke-RepositoryManager/);
@@ -217,6 +227,12 @@ test('single human-facing launcher owns ChatGPT and repository management entry 
   assert.match(legacyShim, /Windows-Coding-Agent\.ps1/);
   assert.doesNotMatch(legacyShim, /function Invoke-/);
   assert.match(updater, /candidateToolchain[\s\S]*\. \$candidateToolchain[\s\S]*Install-WcaManagedVersion/);
+  assert.match(toolchain, /Install-WcaManagedPython/);
+  assert.match(toolchain, /dist\.nuget\.org\/win-x86-commandline\/latest\/nuget\.exe/);
+  assert.match(toolchain, /Get-AuthenticodeSignature/);
+  assert.match(toolchain, /api\.nuget\.org\/v3\/index\.json/);
+  assert.match(server, /python_operation/);
+  assert.doesNotMatch(server, /python_operation[\s\S]{0,500}install_packages/);
 });
 
 

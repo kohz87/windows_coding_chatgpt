@@ -9,7 +9,7 @@ import { createWorktree, resolveWorkspace } from './workspaces.js';
 import { readWorkspaceFile, writeWorkspaceFile, deleteWorkspaceFile } from './files.js';
 import { securePath } from './security.js';
 import { runGit } from './git.js';
-import { repositoryStatus, repositoryRemoteStatus, runAllowedPackageScript, runAllowedNpmScript, runGitOperation, runNpmOperation, commitWorkspace, publishWorkspace } from './operations.js';
+import { repositoryStatus, repositoryRemoteStatus, runAllowedPackageScript, runAllowedNpmScript, runGitOperation, runNpmOperation, runPythonOperation, commitWorkspace, publishWorkspace } from './operations.js';
 import { agentCliStatus, runAgentCli } from './agent-cli.js';
 
 const text = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value });
@@ -159,6 +159,15 @@ function createServer() {
     }),
   }, guarded(async ({ workspaceId, operation, packages, dev, exact, depth, field }) =>
     runNpmOperation(await loadConfig(), workspaceId, operation, { packages, dev, exact, depth, field })));
+
+  server.registerTool('python_operation', {
+    description: 'Use the registered Python 3.11+ runtime inside an isolated worktree. Supports status/project detection, creating a repo-local .venv, and read-only pip health/list/freeze operations. Arbitrary pip installs and arbitrary Python execution are intentionally not exposed.',
+    inputSchema: z.object({
+      workspaceId: z.string(),
+      operation: z.enum(['status', 'create_venv', 'pip_check', 'pip_list', 'freeze']),
+    }),
+  }, guarded(async ({ workspaceId, operation }) =>
+    runPythonOperation(await loadConfig(), workspaceId, operation)));
 
   server.registerTool('agent_cli_status', {
     description: 'Inspect locally configured Codex CLI and Antigravity CLI launch permissions and availability. Enable/disable remains a local human-only Start-Agent action.',

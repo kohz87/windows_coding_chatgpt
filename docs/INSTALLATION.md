@@ -8,7 +8,9 @@ Run `Setup.cmd`. It checks Node.js 20+, npm, npx, and Git. If Node.js/npm/npx or
 
 For ChatGPT, the wizard can also install the official OpenAI `tunnel-client.exe` into the user-scoped Windows Coding Agent tools directory. Automatic installation downloads only from the official OpenAI GitHub release and requires a verifiable SHA-256 digest before the executable is installed. Windows Application Control, WDAC, AppLocker, and Smart App Control are not bypassed.
 
-pnpm and yarn are optional. They are offered only when requested or when a repository needs that package manager.
+Python, pnpm, and yarn are optional. Existing Python 3.11+ installations are discovered through `python`, `python3`, or `py`. The dependency wizard can also install managed CPython 3.12.10 under `%USERPROFILE%\.windows-coding-agent\tools\python\3.12.10\` without modifying global PATH. It uses the official CPython NuGet package (`python` on x64, `pythonarm64` on ARM64), validates the Microsoft signature on the NuGet client and the Python Software Foundation signature on `python.exe`, and verifies `pip` plus `venv` before registering the runtime.
+
+To install the managed Python runtime non-interactively after required dependencies are ready, run `Install-Dependencies.ps1 -ManagedPython`. pnpm and yarn remain optional and are installed only when requested.
 
 ## 2. Get Windows Coding Agent
 

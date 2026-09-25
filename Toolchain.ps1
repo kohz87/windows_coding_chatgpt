@@ -1,6 +1,9 @@
 $ErrorActionPreference = 'Stop'
 
 $script:WcaTunnelClientReleaseApi = 'https://api.github.com/repos/openai/tunnel-client/releases/latest'
+$script:WcaManagedPythonVersion = '3.12.10'
+$script:WcaNugetExeUrl = 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe'
+$script:WcaNugetSource = 'https://api.nuget.org/v3/index.json'
 
 function Get-WcaAgentHome {
   if (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_CODING_AGENT_HOME)) {
@@ -15,6 +18,23 @@ function Get-WcaToolchainPath { return (Join-Path (Get-WcaAgentHome) 'toolchain.
 function Get-WcaActiveVersionPath { return (Join-Path (Get-WcaAgentHome) 'active-version.json') }
 function Get-WcaVersionsRoot { return (Join-Path (Get-WcaAgentHome) 'versions') }
 function Get-WcaStableMcpBootstrapPath { return (Join-Path (Get-WcaAgentHome) 'bootstrap\mcp-loader.mjs') }
+function Get-WcaManagedPythonRoot { return (Join-Path (Get-WcaAgentHome) 'tools\python') }
+function Get-WcaManagedPythonPath {
+  param([string]$Version = $script:WcaManagedPythonVersion)
+  return (Join-Path (Get-WcaManagedPythonRoot) ($Version + '\python.exe'))
+}
+function Test-WcaManagedPythonPath {
+  param([string]$Path)
+  if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+  $root = [IO.Path]::GetFullPath((Get-WcaManagedPythonRoot)).TrimEnd('\') + '\'
+  try { $candidate = [IO.Path]::GetFullPath($Path) } catch { return $false }
+  return $candidate.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)
+}
+function Get-WcaManagedPythonPackageName {
+  if ([string]$env:PROCESSOR_ARCHITECTURE -match '(?i)ARM64' -or [string]$env:PROCESSOR_ARCHITEW6432 -match '(?i)ARM64') { return 'pythonarm64' }
+  if ([Environment]::Is64BitOperatingSystem) { return 'python' }
+  throw 'Managed Python currently requires 64-bit Windows.'
+}
 function Get-WcaStableLauncherPath {
   param([string]$Name = 'Windows-Coding-Agent.cmd')
   return (Join-Path (Get-WcaAgentHome) ('bin\' + $Name))
@@ -101,9 +121,57 @@ function Get-WcaSavedToolPath {
   return $null
 }
 
+function Find-WcaPythonPath {
+  param([string]$Hint = '')
+
+  $state = Get-WcaToolchainState
+  $candidates = New-Object System.Collections.Generic.List[string]
+  if (-not [string]::IsNullOrWhiteSpace($Hint)) { $candidates.Add($Hint.Trim('"')) }
+  if (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_CODING_AGENT_PYTHON)) { $candidates.Add($env:WINDOWS_CODING_AGENT_PYTHON.Trim('"')) }
+
+  $managed = Get-WcaManagedPythonPath
+  if (Test-Path -LiteralPath $managed -PathType Leaf) { $candidates.Add($managed) }
+
+  $saved = Get-WcaSavedToolPath -State $state -Name 'python'
+  if ($saved) { $candidates.Add($saved) }
+
+  foreach ($name in @('python.exe','python3.exe','python')) {
+    $resolved = Get-WcaCommandSource @($name)
+    if ($resolved) { $candidates.Add($resolved) }
+  }
+
+  $seen = @{}
+  foreach ($candidate in $candidates) {
+    if ([string]::IsNullOrWhiteSpace($candidate) -or -not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+    $resolved = (Resolve-Path -LiteralPath $candidate).Path
+    $key = $resolved.ToLowerInvariant()
+    if ($seen[$key]) { continue }
+    $seen[$key] = $true
+    $probe = Get-WcaToolVersion -Name python -Path $resolved
+    if ($probe.status -eq 'ok' -and (Test-WcaPythonSupported ([string]$probe.version))) { return $resolved }
+  }
+
+  $launcher = Get-WcaCommandSource @('py.exe','py')
+  if ($launcher) {
+    try {
+      $actual = & $launcher -3 -c 'import sys; print(sys.executable)' 2>$null
+      if ($LASTEXITCODE -eq 0) {
+        $path = ([string]($actual -join '')).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($path) -and (Test-Path -LiteralPath $path -PathType Leaf)) {
+          $probe = Get-WcaToolVersion -Name python -Path $path
+          if ($probe.status -eq 'ok' -and (Test-WcaPythonSupported ([string]$probe.version))) {
+            return (Resolve-Path -LiteralPath $path).Path
+          }
+        }
+      }
+    } catch {}
+  }
+  return $null
+}
+
 function Find-WcaToolPath {
   param(
-    [ValidateSet('node','npm','npx','git','powershell','cmd','winget','tunnelClient','pnpm','yarn')]
+    [ValidateSet('node','npm','npx','git','powershell','cmd','winget','tunnelClient','pnpm','yarn','python','python3','py','pip')]
     [string]$Name,
     [string]$Hint = ''
   )
@@ -115,6 +183,13 @@ function Find-WcaToolPath {
   if ($Name -eq 'tunnelClient') {
     if (-not [string]::IsNullOrWhiteSpace($env:TUNNEL_CLIENT_BIN)) { $candidates.Add($env:TUNNEL_CLIENT_BIN.Trim('"')) }
     $candidates.Add((Join-Path (Get-WcaAgentHome) 'tools\tunnel-client\tunnel-client.exe'))
+  }
+  if ($Name -in @('python','python3')) {
+    return (Find-WcaPythonPath -Hint $Hint)
+  }
+  if ($Name -eq 'pip') {
+    $python = Find-WcaPythonPath
+    if ($python) { return $python }
   }
 
   $saved = Get-WcaSavedToolPath -State $state -Name $Name
@@ -144,6 +219,8 @@ function Find-WcaToolPath {
     'tunnelClient' { return (Get-WcaCommandSource @('tunnel-client.exe','tunnel-client')) }
     'pnpm' { return (Get-WcaCommandSource @('pnpm.cmd','pnpm.exe','pnpm')) }
     'yarn' { return (Get-WcaCommandSource @('yarn.cmd','yarn.exe','yarn')) }
+    'py' { return (Get-WcaCommandSource @('py.exe','py')) }
+    'pip' { return (Get-WcaCommandSource @('pip.exe','pip3.exe','pip')) }
   }
   return $null
 }
@@ -164,6 +241,10 @@ function Get-WcaToolVersion {
   try {
     if ($Name -eq 'powershell') {
       $output = & $Path -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' 2>&1
+    } elseif ($Name -eq 'py') {
+      $output = & $Path -3 --version 2>&1
+    } elseif ($Name -eq 'pip') {
+      $output = & $Path -I -m pip --version 2>&1
     } else {
       $output = & $Path --version 2>&1
     }
@@ -199,9 +280,16 @@ function Refresh-WcaProcessPath {
   if ($parts.Count -gt 0) { $env:Path = ($parts -join ';') }
 }
 
+function Get-WcaToolSource {
+  param([string]$Name, [string]$Path)
+  if ($Name -in @('python','python3','pip') -and (Test-WcaManagedPythonPath $Path)) { return 'managed' }
+  if ([string]::IsNullOrWhiteSpace($Path)) { return '' }
+  return 'system'
+}
+
 function Refresh-WcaToolchain {
   param([string]$TunnelClientHint = '')
-  $names = @('node','npm','npx','git','powershell','cmd','winget','tunnelClient','pnpm','yarn')
+  $names = @('node','npm','npx','git','powershell','cmd','winget','tunnelClient','pnpm','yarn','python','python3','py','pip')
   $tools = [ordered]@{}
   foreach ($name in $names) {
     $hint = if ($name -eq 'tunnelClient') { $TunnelClientHint } else { '' }
@@ -212,6 +300,7 @@ function Refresh-WcaToolchain {
       version = [string]$probe.version
       status = [string]$probe.status
       error = [string]$probe.error
+      source = Get-WcaToolSource -Name $name -Path $path
     }
   }
   $state = [pscustomobject]@{ schemaVersion = 1; tools = [pscustomobject]$tools; updatedAt = '' }
@@ -221,7 +310,7 @@ function Refresh-WcaToolchain {
 
 function Resolve-WcaToolPath {
   param(
-    [ValidateSet('node','npm','npx','git','powershell','cmd','winget','tunnelClient','pnpm','yarn')]
+    [ValidateSet('node','npm','npx','git','powershell','cmd','winget','tunnelClient','pnpm','yarn','python','python3','py','pip')]
     [string]$Name,
     [string]$Hint = ''
   )
@@ -232,6 +321,16 @@ function Resolve-WcaToolPath {
   $saved = Get-WcaSavedToolPath -State $state -Name $Name
   if ($saved) { return $saved }
   return (Find-WcaToolPath -Name $Name -Hint $Hint)
+}
+
+function Test-WcaPythonSupported {
+  param([string]$VersionText)
+  if ([string]::IsNullOrWhiteSpace($VersionText)) { return $false }
+  $match = [regex]::Match($VersionText, '(?i)Python\s+(\d+)\.(\d+)(?:\.(\d+))?')
+  if (-not $match.Success) { return $false }
+  $major = [int]$match.Groups[1].Value
+  $minor = [int]$match.Groups[2].Value
+  return ($major -gt 3) -or ($major -eq 3 -and $minor -ge 11)
 }
 
 function Test-WcaNodeSupported {
@@ -342,6 +441,96 @@ function Install-WcaTunnelClient {
     Write-Host ('  [OK] tunnel-client installed: {0}' -f $target) -ForegroundColor Green
     return $target
   } finally {
+    Remove-Item -LiteralPath $temporaryRoot -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Test-WcaTrustedSignature {
+  param([string]$Path, [string]$SubjectPattern)
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+  $signature = Get-AuthenticodeSignature -LiteralPath $Path
+  if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate) { return $false }
+  return ([string]$signature.SignerCertificate.Subject -match $SubjectPattern)
+}
+
+function Install-WcaManagedPython {
+  param([string]$Version = $script:WcaManagedPythonVersion)
+
+  if ($Version -notmatch '^3\.\d+\.\d+$') { throw 'Managed Python version must be a stable 3.x.y release.' }
+  $packageName = Get-WcaManagedPythonPackageName
+  $target = Join-Path (Get-WcaManagedPythonRoot) $Version
+  $targetPython = Join-Path $target 'python.exe'
+
+  if (Test-Path -LiteralPath $targetPython -PathType Leaf) {
+    $probe = Get-WcaToolVersion -Name python -Path $targetPython
+    if ($probe.status -eq 'ok' -and (Test-WcaPythonSupported ([string]$probe.version))) {
+      Refresh-WcaToolchain | Out-Null
+      Write-Host ('  [OK] Managed Python already installed: {0}' -f $targetPython) -ForegroundColor Green
+      return $targetPython
+    }
+  }
+
+  $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) ('wca-python-' + [Guid]::NewGuid().ToString('N'))
+  $nuget = Join-Path $temporaryRoot 'nuget.exe'
+  $downloadRoot = Join-Path $temporaryRoot 'packages'
+  $stage = Join-Path (Get-WcaManagedPythonRoot) ('.staging-' + [Guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Force -Path $temporaryRoot, $downloadRoot | Out-Null
+  New-Item -ItemType Directory -Force -Path (Get-WcaManagedPythonRoot) | Out-Null
+
+  try {
+    Write-Host '  Downloading the official NuGet command-line client...'
+    Invoke-WebRequest -Uri $script:WcaNugetExeUrl -OutFile $nuget -UseBasicParsing
+    Unblock-File -LiteralPath $nuget -ErrorAction SilentlyContinue
+    if (-not (Test-WcaTrustedSignature -Path $nuget -SubjectPattern '(?i)Microsoft Corporation')) {
+      throw 'Downloaded nuget.exe did not have a valid Microsoft Authenticode signature.'
+    }
+
+    Write-Host ('  Installing managed Python {0} ({1}) from NuGet.org...' -f $Version, $packageName)
+    & $nuget install $packageName -Version $Version -ExcludeVersion -OutputDirectory $downloadRoot -Source $script:WcaNugetSource -NonInteractive -DirectDownload -NoHttpCache | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "NuGet failed to install $packageName $Version." }
+
+    $tools = Join-Path (Join-Path $downloadRoot $packageName) 'tools'
+    $sourcePython = Join-Path $tools 'python.exe'
+    if (-not (Test-Path -LiteralPath $sourcePython -PathType Leaf)) {
+      throw 'NuGet Python package did not contain tools\python.exe.'
+    }
+
+    New-Item -ItemType Directory -Force -Path $stage | Out-Null
+    Copy-Item -Path (Join-Path $tools '*') -Destination $stage -Recurse -Force
+    $stagePython = Join-Path $stage 'python.exe'
+    Unblock-File -LiteralPath $stagePython -ErrorAction SilentlyContinue
+
+    if (-not (Test-WcaTrustedSignature -Path $stagePython -SubjectPattern '(?i)Python Software Foundation')) {
+      throw 'Managed python.exe did not have a valid Python Software Foundation Authenticode signature.'
+    }
+
+    $probe = Get-WcaToolVersion -Name python -Path $stagePython
+    if ($probe.status -eq 'blocked') {
+      Show-WcaApplicationControlHelp -Path $stagePython -Message $probe.error
+      throw 'Windows Application Control blocked managed Python.'
+    }
+    if ($probe.status -ne 'ok' -or -not (Test-WcaPythonSupported ([string]$probe.version))) {
+      throw "Managed Python validation failed: $([string]$probe.error)"
+    }
+
+    & $stagePython -I -m pip --version *> $null
+    if ($LASTEXITCODE -ne 0) {
+      & $stagePython -I -m ensurepip --upgrade | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw 'Managed Python could not bootstrap pip.' }
+    }
+    & $stagePython -I -c 'import venv'
+    if ($LASTEXITCODE -ne 0) { throw 'Managed Python does not provide the venv module.' }
+
+    if (Test-Path -LiteralPath $target) {
+      $backup = $target + '.broken-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+      Move-Item -LiteralPath $target -Destination $backup
+    }
+    Move-Item -LiteralPath $stage -Destination $target
+    Refresh-WcaToolchain | Out-Null
+    Write-Host ('  [OK] Managed Python installed without changing PATH: {0}' -f $targetPython) -ForegroundColor Green
+    return $targetPython
+  } finally {
+    if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $temporaryRoot -Recurse -Force -ErrorAction SilentlyContinue
   }
 }
@@ -562,6 +751,10 @@ function Invoke-WcaToolchainSelfTest {
     if (-not (Test-Path -LiteralPath (Get-WcaStableLauncherPath) -PathType Leaf)) { throw 'Stable launcher self-test failed.' }
     if (-not (Test-WcaApplicationControlMessage 'An Application Control policy has blocked this file')) { throw 'Application Control detection failed.' }
     if (Test-WcaPathInsideVersions 'C:\Windows\System32') { throw 'Managed path containment accepted an external path.' }
+    if (-not (Test-WcaPythonSupported 'Python 3.11.0')) { throw 'Python minimum-version check rejected Python 3.11.' }
+    if (Test-WcaPythonSupported 'Python 3.10.14') { throw 'Python minimum-version check accepted Python 3.10.' }
+    $pythonPackage = Get-WcaManagedPythonPackageName
+    if ($pythonPackage -notin @('python','pythonarm64')) { throw 'Managed Python package selection failed.' }
     Write-Host 'TOOLCHAIN SELFTEST OK'
   } finally {
     if ($null -eq $oldHome) { Remove-Item Env:WINDOWS_CODING_AGENT_HOME -ErrorAction SilentlyContinue } else { $env:WINDOWS_CODING_AGENT_HOME = $oldHome }

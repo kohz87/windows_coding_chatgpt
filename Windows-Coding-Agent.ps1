@@ -909,6 +909,8 @@ function Invoke-Diagnostics {
   Write-Status 'npm' $(if ($toolchain.tools.npm.status -eq 'ok') { '[OK] ' + [string]$toolchain.tools.npm.version } else { '[X]' })
   Write-Status 'npx' $(if ($toolchain.tools.npx.status -eq 'ok') { '[OK] ' + [string]$toolchain.tools.npx.version } else { '[X]' })
   Write-Status 'Git' $(if ($toolchain.tools.git.status -eq 'ok') { '[OK] ' + [string]$toolchain.tools.git.version } else { '[X]' })
+  Write-Status 'Python 3.11+' $(if ($toolchain.tools.python.status -eq 'ok') { '[OK] ' + [string]$toolchain.tools.python.version + $(if ([string]$toolchain.tools.python.source -eq 'managed') { ' (managed)' } else { ' (system)' }) } else { '[--] optional' })
+  Write-Status 'pip' $(if ($toolchain.tools.pip.status -eq 'ok') { '[OK] ' + [string]$toolchain.tools.pip.version } else { '[--] optional' })
   Write-Status 'Repository registry' $(if ($repoCount -gt 0) { "[OK] $repoCount authorized" } else { '[--] none' })
   Write-Status 'Managed agent' $(if ($active -and (Test-WcaManagedRoot ([string]$active.path))) { '[OK] v' + [string]$active.activeVersion } else { '[--] not installed' })
   Write-Status 'Stable bootstrap' $(if (Test-Path -LiteralPath (Get-WcaStableMcpBootstrapPath) -PathType Leaf) { '[OK]' } else { '[X]' })
@@ -1025,6 +1027,7 @@ function Invoke-SelfHeal {
     Write-Status 'Node.js' $(if ($toolchain.tools.node.status -eq 'ok') { '[OK]' } else { '[X]' })
     Write-Status 'npm' $(if ($toolchain.tools.npm.status -eq 'ok') { '[OK]' } else { '[X]' })
     Write-Status 'Git' $(if ($toolchain.tools.git.status -eq 'ok') { '[OK]' } else { '[X]' })
+    Write-Status 'Python 3.11+' $(if ($toolchain.tools.python.status -eq 'ok') { '[OK] ' + [string]$toolchain.tools.python.version } else { '[--] optional' })
 
     $clientPath = Get-ExistingTunnelClientPath -State $State
     if ($clientPath -and (Test-TunnelId $State.tunnelId) -and (Test-SavedRuntimeCredential)) {
