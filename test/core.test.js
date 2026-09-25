@@ -13,6 +13,7 @@ import { createWorktree, resolveWorkspace } from '../src/workspaces.js';
 import { readWorkspaceFile, writeWorkspaceFile } from '../src/files.js';
 import { runProcess } from '../src/process.js';
 import { runAllowedPackageScript } from '../src/operations.js';
+import { VERSION } from '../src/version.js';
 
 async function git(args, cwd) {
   const result = await runGit(args, cwd);
@@ -32,6 +33,11 @@ async function makeRepo() {
   await git(['commit', '-m', 'initial'], root);
   return root;
 }
+
+test('runtime version stays in sync with package.json', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(VERSION, packageJson.version);
+});
 
 test('GitHub remote parser accepts HTTPS and SSH', () => {
   assert.equal(parseGitHubRemote('https://github.com/example/project.git'), 'example/project');
