@@ -8,7 +8,7 @@ The normal user path is now deliberately simple:
 Setup.cmd
    |
    v
-Connect-ChatGPT.cmd
+Windows-Coding-Agent.cmd
    |
    v
 Guided ASCII wizard
@@ -22,7 +22,7 @@ Guided ASCII wizard
 ChatGPT <-> Secure MCP Tunnel <-> Windows Coding Agent <-> authorized Git
 ```
 
-ChatGPT never receives permission to browse arbitrary directories. Repository authorization still happens locally with `Setup.cmd` or `Start-Agent.cmd`.
+ChatGPT never receives permission to browse arbitrary directories. Repository authorization still happens locally with `Setup.cmd` or `Windows-Coding-Agent.cmd` → **Manage repositories**.
 
 ## Requirements
 
@@ -54,7 +54,7 @@ The main wizard's **Maintenance** menu can scan/install dependencies, self-heal 
 Run:
 
 ```text
-Connect-ChatGPT.cmd
+Windows-Coding-Agent.cmd
 ```
 
 You will see a control panel similar to:
@@ -216,7 +216,7 @@ This lets the wizard resume without turning the setup file into a plaintext cred
 After first-time setup, run:
 
 ```text
-Connect-ChatGPT.cmd
+Windows-Coding-Agent.cmd
 ```
 
 and choose:
@@ -296,7 +296,7 @@ Existing tunnel-client profile files are left alone and are safely overwritten b
 You can also invoke this directly:
 
 ```text
-Connect-ChatGPT.cmd -ResetSetup
+Windows-Coding-Agent.cmd -ResetSetup
 ```
 
 ### Full Windows Coding Agent setup
@@ -366,7 +366,7 @@ Check:
 
 - the Platform tunnel is scoped to the correct ChatGPT workspace
 - your role has Tunnels Read + Use
-- `Connect-ChatGPT.cmd` bridge is still running
+- `Windows-Coding-Agent.cmd` bridge is still running
 - `tunnel-client doctor --profile windows-coding-agent --explain` passes
 - your workspace allows the custom app/tunnel connection
 
@@ -381,14 +381,14 @@ Check both permission layers:
 
 ### ChatGPT can commit but cannot push
 
-Enable publication locally for that repository with `Start-Agent.cmd`. A remote ChatGPT session cannot grant itself publication permission.
+Enable publication locally with `Windows-Coding-Agent.cmd` → **Manage repositories**. A remote ChatGPT session cannot grant itself publication permission.
 
 ### Setup became confusing or stale
 
 Use:
 
 ```text
-Connect-ChatGPT.cmd
+Windows-Coding-Agent.cmd
   -> [5] Start fresh setup
   -> [1] ChatGPT connection only
 ```

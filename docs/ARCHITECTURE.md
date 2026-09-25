@@ -42,9 +42,7 @@ The tunnel profile targets the stable bootstrap, not a release ZIP extraction pa
     mcp-loader.mjs
     launch.ps1
   bin\
-    Windows-Coding-Agent.cmd
-    Connect-ChatGPT.cmd
-    Start-Agent.cmd
+    Windows-Coding-Agent.cmd   # canonical human-facing control panel
     Setup.cmd
     Doctor.cmd
     Update.cmd

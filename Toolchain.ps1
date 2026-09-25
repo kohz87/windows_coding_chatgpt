@@ -16,7 +16,7 @@ function Get-WcaActiveVersionPath { return (Join-Path (Get-WcaAgentHome) 'active
 function Get-WcaVersionsRoot { return (Join-Path (Get-WcaAgentHome) 'versions') }
 function Get-WcaStableMcpBootstrapPath { return (Join-Path (Get-WcaAgentHome) 'bootstrap\mcp-loader.mjs') }
 function Get-WcaStableLauncherPath {
-  param([string]$Name = 'Connect-ChatGPT.cmd')
+  param([string]$Name = 'Windows-Coding-Agent.cmd')
   return (Join-Path (Get-WcaAgentHome) ('bin\' + $Name))
 }
 
@@ -429,7 +429,8 @@ function Ensure-WcaStableFiles {
   Copy-Item -LiteralPath (Join-Path $bootstrapSource 'mcp-loader.mjs') -Destination (Join-Path $bootstrapTarget 'mcp-loader.mjs') -Force
   Copy-Item -LiteralPath (Join-Path $bootstrapSource 'launch.ps1') -Destination (Join-Path $bootstrapTarget 'launch.ps1') -Force
 
-  Write-WcaStableLauncher -Path (Join-Path $binTarget 'Windows-Coding-Agent.cmd') -Mode 'Connect'
+  Write-WcaStableLauncher -Path (Join-Path $binTarget 'Windows-Coding-Agent.cmd') -Mode 'Control'
+  # Compatibility aliases for existing pinned shortcuts. The canonical entry point is Windows-Coding-Agent.cmd.
   Write-WcaStableLauncher -Path (Join-Path $binTarget 'Connect-ChatGPT.cmd') -Mode 'Connect'
   Write-WcaStableLauncher -Path (Join-Path $binTarget 'Start-Agent.cmd') -Mode 'Manage'
   Write-WcaStableLauncher -Path (Join-Path $binTarget 'Setup.cmd') -Mode 'Setup'
@@ -443,7 +444,7 @@ function Copy-WcaDistribution {
   New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
   $items = @(
     'src','docs','test','bootstrap','scripts',
-    'Setup.cmd','Start-Agent.cmd','Connect-ChatGPT.cmd','Connect-ChatGPT.ps1',
+    'Windows-Coding-Agent.cmd','Windows-Coding-Agent.ps1','Setup.cmd',
     'Doctor.cmd','Update.cmd','Update.ps1','Install-Dependencies.cmd','Install-Dependencies.ps1',
     'Toolchain.ps1','config.example.json','package.json','package-lock.json','README.md','LICENSE','AGENTS.md'
   )
@@ -476,8 +477,8 @@ function Invoke-WcaDistributionValidation {
     if ($LASTEXITCODE -ne 0) { throw 'npm run validate failed for the managed installation.' }
 
     Write-Host '  Running Windows launcher self-test...'
-    & $powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'Connect-ChatGPT.ps1') -SelfTest
-    if ($LASTEXITCODE -ne 0) { throw 'Connect-ChatGPT self-test failed for the managed installation.' }
+    & $powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'Windows-Coding-Agent.ps1') -SelfTest
+    if ($LASTEXITCODE -ne 0) { throw 'Windows-Coding-Agent control-panel self-test failed for the managed installation.' }
   } finally {
     Pop-Location
   }

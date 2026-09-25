@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet('Connect','Manage','Setup','Doctor','Update','Dependencies')]
+  [ValidateSet('Control','Connect','Manage','Setup','Doctor','Update','Dependencies')]
   [string]$Mode,
   [Parameter(ValueFromRemainingArguments = $true)]
   [string[]]$RemainingArgs
@@ -51,14 +51,15 @@ if (-not $node) {
 }
 
 switch ($Mode) {
-  'Connect' { & (Join-Path $root 'Connect-ChatGPT.ps1') @RemainingArgs; exit $(if ($?) { 0 } else { 1 }) }
+  'Control' { & (Join-Path $root 'Windows-Coding-Agent.ps1') @RemainingArgs; exit $(if ($?) { 0 } else { 1 }) }
+  'Connect' { & (Join-Path $root 'Windows-Coding-Agent.ps1') @RemainingArgs; exit $(if ($?) { 0 } else { 1 }) }
+  'Manage' { & (Join-Path $root 'Windows-Coding-Agent.ps1') -Open Repositories @RemainingArgs; exit $(if ($?) { 0 } else { 1 }) }
   'Update' { & (Join-Path $root 'Update.ps1') @RemainingArgs; exit $(if ($?) { 0 } else { 1 }) }
   'Dependencies' { & (Join-Path $root 'Install-Dependencies.ps1') @RemainingArgs; exit $(if ($?) { 0 } else { 1 }) }
 }
 
 if (-not $node) { throw 'Node.js is unavailable. Run Install-Dependencies.cmd.' }
 $entry = switch ($Mode) {
-  'Manage' { Join-Path $root 'src\startup.js' }
   'Setup' { Join-Path $root 'src\setup.js' }
   'Doctor' { Join-Path $root 'src\doctor.js' }
 }

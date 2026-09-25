@@ -26,11 +26,10 @@ try {
   console.log('  |    SETUP COMPLETE    |');
   console.log('  +----------------------+');
   console.log('');
-  console.log('  [1] Repository manager : Start-Agent.cmd');
-  console.log('  [2] Connect ChatGPT    : Connect-ChatGPT.cmd');
+  console.log('  Control panel          : Windows-Coding-Agent.cmd');
   console.log('  [3] Local MCP clients  : npm run server');
   console.log('');
-  console.log('  ChatGPT setup is guided. Run Connect-ChatGPT.cmd next.');
+  console.log('  Run Windows-Coding-Agent.cmd next for ChatGPT, repositories, diagnostics, or maintenance.');
 } catch (error) {
   console.error(`\n  [X] Setup failed: ${error.message}`);
   process.exitCode = 1;

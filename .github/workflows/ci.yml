@@ -20,7 +20,7 @@ jobs:
       - name: PowerShell maintenance and wizard smoke checks
         shell: powershell
         run: |
-          foreach ($script in @('.\Connect-ChatGPT.ps1','.\Toolchain.ps1','.\Install-Dependencies.ps1','.\Update.ps1','.\bootstrap\launch.ps1')) {
+          foreach ($script in @('.\Windows-Coding-Agent.ps1','.\Toolchain.ps1','.\Install-Dependencies.ps1','.\Update.ps1','.\bootstrap\launch.ps1')) {
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script), [ref]$null, [ref]$errors) | Out-Null
             if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error "$script : $($_.Message)" }; exit 1 }
@@ -38,9 +38,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -NoProfile -ExecutionPolicy Bypass -File .\Update.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -ExecutionPolicy Bypass -File .\Connect-ChatGPT.ps1 -SelfTest
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\Windows-Coding-Agent.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -ExecutionPolicy Bypass -File .\Connect-ChatGPT.ps1 -ShowInstructions -TunnelId tunnel_ci_test
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\Windows-Coding-Agent.ps1 -ShowInstructions -TunnelId tunnel_ci_test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Stable bootstrap active-version smoke check
         shell: powershell
@@ -80,12 +80,12 @@ jobs:
           $extract = Join-Path $env:RUNNER_TEMP 'wca-package-smoke'
           Expand-Archive -Path $zip.FullName -DestinationPath $extract -Force
           $bundle = Get-ChildItem $extract -Directory | Select-Object -First 1
-          foreach ($required in @('Setup.cmd','Start-Agent.cmd','Connect-ChatGPT.cmd','Connect-ChatGPT.ps1','Toolchain.ps1','Install-Dependencies.cmd','Install-Dependencies.ps1','Update.cmd','Update.ps1','package.json','package-lock.json','README.md','LICENSE','VERSION.txt','src','docs','test','bootstrap','scripts')) {
+          foreach ($required in @('Setup.cmd','Windows-Coding-Agent.cmd','Windows-Coding-Agent.ps1','Toolchain.ps1','Install-Dependencies.cmd','Install-Dependencies.ps1','Update.cmd','Update.ps1','package.json','package-lock.json','README.md','LICENSE','VERSION.txt','src','docs','test','bootstrap','scripts')) {
             if (-not (Test-Path (Join-Path $bundle.FullName $required))) { throw "Package is missing $required." }
           }
           powershell -NoProfile -ExecutionPolicy Bypass -Command ". '$(Join-Path $bundle.FullName 'Toolchain.ps1')'; Invoke-WcaToolchainSelfTest"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bundle.FullName 'Update.ps1') -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bundle.FullName 'Connect-ChatGPT.ps1') -SelfTest
+          powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bundle.FullName 'Windows-Coding-Agent.ps1') -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

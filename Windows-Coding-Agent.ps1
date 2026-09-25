@@ -6,7 +6,9 @@ param(
   [switch]$ShowInstructions,
   [switch]$ResetSetup,
   [switch]$RepairOnly,
-  [switch]$SelfTest
+  [switch]$SelfTest,
+  [ValidateSet('Menu','Repositories')]
+  [string]$Open = 'Menu'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,7 +26,7 @@ if (-not (Test-Path -LiteralPath $script:ToolchainScript -PathType Leaf)) {
 $script:CurrentVersion = Get-WcaPackageVersion -SourceRoot $script:RepoRoot
 $script:BootstrapPath = Get-WcaStableMcpBootstrapPath
 $script:SetupCmd = Join-Path $script:RepoRoot 'Setup.cmd'
-$script:ManagerCmd = Join-Path $script:RepoRoot 'Start-Agent.cmd'
+$script:RepositoryManagerScript = Join-Path $script:RepoRoot 'src\startup.js'
 $script:DependencyInstaller = Join-Path $script:RepoRoot 'Install-Dependencies.ps1'
 $script:Updater = Join-Path $script:RepoRoot 'Update.ps1'
 
@@ -214,6 +216,16 @@ function Get-RepositoryCount {
 
 function Get-NodePath {
   return (Resolve-WcaToolPath -Name node)
+}
+
+function Invoke-RepositoryManager {
+  $node = Get-NodePath
+  if (-not $node) { throw 'Node.js is unavailable. Use Maintenance -> Dependencies from Windows-Coding-Agent.cmd.' }
+  if (-not (Test-Path -LiteralPath $script:RepositoryManagerScript -PathType Leaf)) {
+    throw "Repository manager is missing: $script:RepositoryManagerScript"
+  }
+  & $node $script:RepositoryManagerScript
+  if ($LASTEXITCODE -ne 0) { throw "Repository manager exited with code $LASTEXITCODE." }
 }
 function Get-GitPath {
   return (Resolve-WcaToolPath -Name git)
@@ -1117,9 +1129,7 @@ function Invoke-ReconfigureMenu {
       continue
     }
     if ($choice -eq '5') {
-      if (Test-Path -LiteralPath $script:ManagerCmd -PathType Leaf) {
-        & cmd.exe /c $script:ManagerCmd
-      }
+      Invoke-RepositoryManager
       continue
     }
   }
@@ -1241,7 +1251,7 @@ function Show-MainMenu {
     }
     if ($choice -eq '3') { Invoke-Diagnostics -State $state; continue }
     if ($choice -eq '4') {
-      if (Test-Path -LiteralPath $script:ManagerCmd -PathType Leaf) { & cmd.exe /c $script:ManagerCmd }
+      Invoke-RepositoryManager
       continue
     }
     if ($choice -eq '5') { Invoke-FreshSetupMenu; continue }
@@ -1302,6 +1312,11 @@ if ($RepairOnly) {
   if (-not $managed) { exit 1 }
   Refresh-WcaToolchain -TunnelClientHint ([string]$state.tunnelClientPath) | Out-Null
   Write-Host 'Local runtime and toolchain repair completed.'
+  exit 0
+}
+
+if ($Open -eq 'Repositories') {
+  Invoke-RepositoryManager
   exit 0
 }
 

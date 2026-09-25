@@ -48,7 +48,7 @@ If you intentionally changed remotes, remove the old authorization and add the r
 
 ## Publishing is disabled
 
-Run `Start-Agent.cmd`, choose `P`, and toggle publication for the repository.
+Run `Windows-Coding-Agent.cmd`, choose **Manage repositories**, then `P` to toggle publication for the repository.
 
 Publication remains fast-forward-only.
 

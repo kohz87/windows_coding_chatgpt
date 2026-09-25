@@ -188,3 +188,34 @@ test('runProcess launches Windows cmd wrappers without execFile EINVAL', { skip:
   assert.equal(result.ok, true, result.stderr || result.error);
   assert.match(result.stdout, /WRAPPER_OK ARG_OK/);
 });
+
+
+test('single human-facing launcher owns ChatGPT and repository management entry points', async () => {
+  const launcher = await readFile(new URL('../Windows-Coding-Agent.cmd', import.meta.url), 'utf8');
+  const control = await readFile(new URL('../Windows-Coding-Agent.ps1', import.meta.url), 'utf8');
+  const bootstrap = await readFile(new URL('../bootstrap/launch.ps1', import.meta.url), 'utf8');
+  const toolchain = await readFile(new URL('../Toolchain.ps1', import.meta.url), 'utf8');
+  const packager = await readFile(new URL('../scripts/package-release.ps1', import.meta.url), 'utf8');
+
+  assert.match(launcher, /Windows-Coding-Agent\.ps1/);
+  assert.match(control, /function Invoke-RepositoryManager/);
+  assert.match(control, /\[4\] Manage repositories/);
+  assert.match(bootstrap, /'Control'.*Windows-Coding-Agent\.ps1/);
+  assert.match(bootstrap, /'Manage'.*-Open Repositories/);
+  assert.match(toolchain, /Get-WcaStableLauncherPath[\s\S]*Windows-Coding-Agent\.cmd/);
+  assert.match(toolchain, /Windows-Coding-Agent\.cmd'\) -Mode 'Control'/);
+  assert.doesNotMatch(packager, /Start-Agent\.cmd|Connect-ChatGPT/);
+});
+
+
+test('unified PowerShell control panel self-test passes on Windows', { skip: process.platform !== 'win32' }, async () => {
+  const script = path.resolve('Windows-Coding-Agent.ps1');
+  const result = await runProcess('powershell.exe', [
+    '-NoProfile',
+    '-ExecutionPolicy', 'Bypass',
+    '-File', script,
+    '-SelfTest',
+  ], { timeout: 60_000 });
+  assert.equal(result.ok, true, result.stderr || result.error);
+  assert.match(result.stdout, /SELFTEST OK/);
+});

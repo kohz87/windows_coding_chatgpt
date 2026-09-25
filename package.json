@@ -1,6 +1,6 @@
 {
   "name": "windows-coding-agent",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Security-bounded Windows MCP coding controller for explicitly authorized Git repositories.",
   "type": "module",
   "private": true,
@@ -8,16 +8,16 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "node src/startup.js",
+    "start": "powershell -NoProfile -ExecutionPolicy Bypass -File Windows-Coding-Agent.ps1",
     "server": "node src/index.js",
     "setup": "node src/setup.js",
-    "chatgpt": "powershell -NoProfile -ExecutionPolicy Bypass -File Connect-ChatGPT.ps1",
     "doctor": "node src/doctor.js",
     "test": "node --test",
     "validate": "node src/validate.js",
     "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1",
     "update": "powershell -NoProfile -ExecutionPolicy Bypass -File Update.ps1",
-    "deps": "powershell -NoProfile -ExecutionPolicy Bypass -File Install-Dependencies.ps1"
+    "deps": "powershell -NoProfile -ExecutionPolicy Bypass -File Install-Dependencies.ps1",
+    "manage": "node src/startup.js"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",

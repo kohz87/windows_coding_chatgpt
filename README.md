@@ -7,7 +7,7 @@ The important boundary is simple: **the human chooses repository directories loc
 ## What it provides
 
 - Friendly ASCII setup and repository-management screens
-- Guided `Connect-ChatGPT.cmd` wizard for ChatGPT + OpenAI Secure MCP Tunnel
+- One `Windows-Coding-Agent.cmd` control panel for ChatGPT, repositories, diagnostics, agent CLIs, and maintenance
 - Automatic opening of the official tunnel, API-key, tunnel-client, and ChatGPT setup pages when needed
 - Resume/reconfigure/fresh-setup flows with optional Windows DPAPI-secured runtime credential storage
 - Persistent repository registry under your Windows user profile
@@ -80,7 +80,7 @@ The setup first checks required dependencies, creates a versioned managed Window
 Double-click:
 
 ```text
-Connect-ChatGPT.cmd
+Windows-Coding-Agent.cmd
 ```
 
 The launcher becomes the setup control panel:
@@ -129,7 +129,7 @@ The authenticated browser pages remain explicit user actions. The script does no
 After setup, future launches become:
 
 ```text
-Connect-ChatGPT.cmd
+Windows-Coding-Agent.cmd
    -> [1] Start ChatGPT bridge
 ```
 
@@ -179,7 +179,7 @@ See [docs/CHATGPT.md](docs/CHATGPT.md) for the detailed walkthrough, resume/reco
 
 ## Managed installation, self-heal, and updates
 
-v0.1.5 introduces a stable user-scoped runtime:
+The managed installation uses a stable user-scoped runtime:
 
 ```text
 %USERPROFILE%\.windows-coding-agent\
@@ -189,14 +189,14 @@ v0.1.5 introduces a stable user-scoped runtime:
     mcp-loader.mjs
     launch.ps1
   bin\
-    Connect-ChatGPT.cmd
-    Start-Agent.cmd
+    Windows-Coding-Agent.cmd
+    Windows-Coding-Agent.cmd
     Setup.cmd
     Doctor.cmd
     Update.cmd
     Install-Dependencies.cmd
   versions\
-    v0.1.5\
+    v0.1.10\
   tools\
     tunnel-client\
   secrets\
@@ -211,7 +211,7 @@ Updates are downloaded from this repository's GitHub release assets, SHA-256 ver
 
 ## Resume, reconfigure, or start fresh
 
-`Connect-ChatGPT.cmd` remembers only non-secret setup state such as the tunnel ID, tunnel-client path, and completion markers.
+`Windows-Coding-Agent.cmd` remembers only non-secret setup state such as the tunnel ID, tunnel-client path, and completion markers.
 
 Default location:
 
@@ -236,7 +236,7 @@ From the control panel you can:
 Run:
 
 ```text
-Start-Agent.cmd
+Windows-Coding-Agent.cmd
 ```
 
 It provides an ASCII repository manager for adding/removing authorized repositories and toggling guarded publication without hand-editing JSON.
@@ -261,7 +261,7 @@ or:
 npm run server
 ```
 
-Do not point an MCP client at `Start-Agent.cmd`. The startup manager is the human-facing local authorization screen; `src/index.js` is the machine-facing MCP endpoint.
+Do not point an MCP client at `Windows-Coding-Agent.cmd`. The startup manager is the human-facing local authorization screen; `src/index.js` is the machine-facing MCP endpoint.
 
 ## Example Codex registration
 
@@ -300,7 +300,7 @@ A registration contains local policy such as:
 }
 ```
 
-Users normally do not edit this manually. `Setup.cmd` and `Start-Agent.cmd` maintain it.
+Users normally do not edit this manually. `Setup.cmd` and `Windows-Coding-Agent.cmd` maintain it.
 
 Package scripts are exact-allowlisted by default. For a repository you trust to define its own executable scripts, the local repository manager can opt into:
 
@@ -308,7 +308,7 @@ Package scripts are exact-allowlisted by default. For a repository you trust to 
 "allowedPackageScripts": ["*"]
 ```
 
-The wildcard is local policy, not an MCP bypass: `run_package_script` still requires `runScripts`, an isolated controller worktree, and an exact script name that exists in that repository's current `package.json`. Use **Start-Agent.cmd → S** to toggle this policy for an already authorized repository.
+The wildcard is local policy, not an MCP bypass: `run_package_script` still requires `runScripts`, an isolated controller worktree, and an exact script name that exists in that repository's current `package.json`. Use **Windows-Coding-Agent.cmd → Manage repositories → S** to toggle this policy for an already authorized repository.
 
 Default location:
 
@@ -354,7 +354,7 @@ Publication is disabled unless the user enabled it locally for that repository.
 
 ### Optional coding-agent CLIs
 
-`Start-Agent.cmd` exposes a local **Toggle coding-agent CLI** action for `codex` and `agy`. Both are disabled by default. Enabling one discovers the executable from the local PATH, verifies `--version`, and stores the exact absolute executable path in the local controller config.
+`Windows-Coding-Agent.cmd` → **Manage repositories** exposes the local **Toggle coding-agent CLI** action for `codex` and `agy`. Both are disabled by default. Enabling one discovers the executable from the local PATH, verifies `--version`, and stores the exact absolute executable path in the local controller config.
 
 After local enablement, MCP clients can use `agent_cli_status` and `agent_run`. Runs are accepted only for controller-created isolated worktrees. Codex runs use `codex exec --sandbox workspace-write`; Antigravity runs use headless `agy -p` with its sandbox enabled. The MCP cannot enable a runner, replace its executable path, request Codex `danger-full-access`, or pass Antigravity `--dangerously-skip-permissions`.
 

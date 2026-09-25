@@ -32,9 +32,8 @@ try {
     'bootstrap',
     'scripts',
     'Setup.cmd',
-    'Start-Agent.cmd',
-    'Connect-ChatGPT.cmd',
-    'Connect-ChatGPT.ps1',
+    'Windows-Coding-Agent.cmd',
+    'Windows-Coding-Agent.ps1',
     'Toolchain.ps1',
     'Install-Dependencies.cmd',
     'Install-Dependencies.ps1',
@@ -62,7 +61,7 @@ try {
     '',
     'Unzip this directory and run Setup.cmd.',
     'Setup can install or repair required dependencies and creates a managed user-scoped installation.',
-    'For ChatGPT access, use the stable launcher under .windows-coding-agent\bin or run Connect-ChatGPT.cmd.'
+    'After setup, use Windows-Coding-Agent.cmd for ChatGPT, repositories, diagnostics, and maintenance.'
   ) | Set-Content -Path (Join-Path $bundleRoot 'VERSION.txt') -Encoding ascii
 
   $zipPath = Join-Path $outputRoot "$bundleName.zip"

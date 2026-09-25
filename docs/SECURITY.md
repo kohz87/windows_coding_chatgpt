@@ -23,7 +23,7 @@ ChatGPT custom MCP app
 
 Windows Coding Agent does not expose its own unauthenticated public TCP/HTTP listener for ChatGPT.
 
-The tunnel runtime uses a restricted `CONTROL_PLANE_API_KEY` with Tunnels Read + Use. `Connect-ChatGPT.cmd` prompts for that key without echo. The user can keep it session-only or persist it as Windows DPAPI-encrypted ciphertext bound to the current Windows user. The repository registry and wizard-state JSON never contain the literal key.
+The tunnel runtime uses a restricted `CONTROL_PLANE_API_KEY` with Tunnels Read + Use. `Windows-Coding-Agent.cmd` prompts for that key without echo. The user can keep it session-only or persist it as Windows DPAPI-encrypted ciphertext bound to the current Windows user. The repository registry and wizard-state JSON never contain the literal key.
 
 Do not use an organization admin key as the long-lived runtime credential. Do not write literal runtime keys into the Windows Coding Agent repository, config example, tunnel profile, or wizard-state file.
 
@@ -121,7 +121,7 @@ There is no MCP option for:
 
 If any condition fails, publication stops.
 
-A remote ChatGPT session cannot enable publication for itself. That setting remains a local human action in `Setup.cmd`/`Start-Agent.cmd`.
+A remote ChatGPT session cannot enable publication for itself. That setting remains a local human action in `Setup.cmd` / `Windows-Coding-Agent.cmd` → **Manage repositories**.
 
 ## Package and script execution
 
@@ -135,7 +135,7 @@ The allowlisted package scripts themselves are repository-controlled code, so us
 
 ## Optional coding-agent CLI execution
 
-Codex CLI and Antigravity CLI (`agy`) are disabled by default. They can be enabled or disabled only through the local human-facing `Start-Agent.cmd` repository manager. Enabling records the exact discovered executable path after a successful `--version` probe.
+Codex CLI and Antigravity CLI (`agy`) are disabled by default. They can be enabled or disabled only through the local human-facing `Windows-Coding-Agent.cmd` → **Manage repositories**. Enabling records the exact discovered executable path after a successful `--version` probe.
 
 Remote MCP callers cannot toggle these runners or supply an executable path. `agent_run` accepts only `codex` or `agy`, requires a controller-created isolated worktree, and runs with that worktree as the process working directory.
 

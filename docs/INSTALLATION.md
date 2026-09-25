@@ -52,14 +52,14 @@ The controller verifies the selected directory, detects the Git root, `origin`, 
 
 Only paths explicitly authorized by the human operator become available to MCP clients. ChatGPT cannot remotely add arbitrary Windows directories.
 
-Setup also asks whether guarded GitHub publication should be enabled. The recommended first-run answer is `No`. Publication can later be toggled from `Start-Agent.cmd`.
+Setup also asks whether guarded GitHub publication should be enabled. The recommended first-run answer is `No`. Publication can later be toggled from `Windows-Coding-Agent.cmd` → **Manage repositories**.
 
 ## 4. Connect ChatGPT (optional)
 
 If you want ChatGPT itself to call the local MCP, double-click:
 
 ```text
-Connect-ChatGPT.cmd
+Windows-Coding-Agent.cmd
 ```
 
 You do **not** need to pre-open all the OpenAI setup pages manually. The guided wizard walks through them in order and opens the official pages when requested.
@@ -86,7 +86,7 @@ See `docs/CHATGPT.md` for the full walkthrough.
 Run:
 
 ```text
-Start-Agent.cmd
+Windows-Coding-Agent.cmd
 ```
 
 The ASCII repository manager can:
@@ -111,7 +111,7 @@ or:
 npm run doctor
 ```
 
-For combined local + tunnel diagnostics, use the `[3] Diagnostics` option inside `Connect-ChatGPT.cmd`.
+For combined local + tunnel diagnostics, use the `[3] Diagnostics` option inside `Windows-Coding-Agent.cmd`.
 
 ## 7. Connect other MCP clients
 
